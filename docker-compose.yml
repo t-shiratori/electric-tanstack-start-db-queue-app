@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: queue-app-postgres
+    environment:
+      POSTGRES_DB: queue_app
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  electric:
+    image: electricsql/electric:latest
+    container_name: queue-app-electric
+    environment:
+      DATABASE_URL: postgresql://postgres:password@postgres:5432/queue_app
+      ELECTRIC_WRITE_TO_PG_MODE: direct_writes
+      PG_PROXY_PASSWORD: proxy_password
+      AUTH_MODE: insecure
+    ports:
+      - "3000:3000"
+      - "5133:5133"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
