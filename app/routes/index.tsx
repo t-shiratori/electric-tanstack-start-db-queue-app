@@ -1,4 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
+import {
+  ClipboardDocumentListIcon,
+  MegaphoneIcon,
+  TvIcon,
+  DevicePhoneMobileIcon,
+  ArrowRightIcon,
+} from '@heroicons/react/24/outline'
 
 export const Route = createFileRoute('/')({
   component: HomeComponent,
@@ -6,36 +13,88 @@ export const Route = createFileRoute('/')({
 
 function HomeComponent() {
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-      <div className="bg-white p-8 rounded-lg shadow-lg max-w-2xl w-full">
-        <h1 className="text-3xl font-bold text-center mb-8 text-gray-800">
-          順番待ちアプリ
-        </h1>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-6 py-16">
+        {/* ヘッダー */}
+        <div className="text-center mb-20">
+          <h1 className="text-6xl font-semibold tracking-tight text-gray-900 mb-4">
+            Queue System
+          </h1>
+          <p className="text-xl text-gray-600 font-light">
+            スマートな順番待ち管理システム
+          </p>
+        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-blue-500 text-white font-semibold py-6 px-4 rounded-lg text-center">
-            <div className="text-xl mb-2">📝</div>
-            <div>受付端末</div>
-            <div className="text-xs mt-2">実装予定</div>
-          </div>
+        {/* グリッド */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto">
+          {/* 受付端末 */}
+          <a
+            href="/staff/reception"
+            className="group relative bg-white border-2 border-gray-200 rounded-xl p-12 hover:border-gray-900 hover:shadow-lg transition-all duration-300"
+          >
+            <div className="flex flex-col items-start">
+              <ClipboardDocumentListIcon className="w-12 h-12 text-gray-700 mb-6" />
+              <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+                受付端末
+              </h2>
+              <p className="text-gray-600 font-light">
+                新規エントリーの作成と整理券の発行
+              </p>
+            </div>
+            <ArrowRightIcon className="absolute bottom-8 right-8 w-6 h-6 text-gray-400 group-hover:text-gray-900 transition-colors" />
+          </a>
 
-          <div className="bg-green-500 text-white font-semibold py-6 px-4 rounded-lg text-center">
-            <div className="text-xl mb-2">📢</div>
-            <div>呼び出し端末</div>
-            <div className="text-xs mt-2">実装予定</div>
-          </div>
+          {/* 呼び出し端末 */}
+          <a
+            href="/staff/call"
+            className="group relative bg-white border-2 border-gray-200 rounded-xl p-12 hover:border-gray-900 hover:shadow-lg transition-all duration-300"
+          >
+            <div className="flex flex-col items-start">
+              <MegaphoneIcon className="w-12 h-12 text-gray-700 mb-6" />
+              <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+                呼び出し端末
+              </h2>
+              <p className="text-gray-600 font-light">
+                エントリーの呼び出しと対応管理
+              </p>
+            </div>
+            <ArrowRightIcon className="absolute bottom-8 right-8 w-6 h-6 text-gray-400 group-hover:text-gray-900 transition-colors" />
+          </a>
 
-          <div className="bg-purple-500 text-white font-semibold py-6 px-4 rounded-lg text-center">
-            <div className="text-xl mb-2">📺</div>
-            <div>表示端末</div>
-            <div className="text-xs mt-2">実装予定</div>
-          </div>
+          {/* 表示端末 */}
+          <a
+            href="/display"
+            className="group relative bg-white border-2 border-gray-200 rounded-xl p-12 hover:border-gray-900 hover:shadow-lg transition-all duration-300"
+          >
+            <div className="flex flex-col items-start">
+              <TvIcon className="w-12 h-12 text-gray-700 mb-6" />
+              <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+                表示端末
+              </h2>
+              <p className="text-gray-600 font-light">
+                待ち行列状況のリアルタイム表示
+              </p>
+            </div>
+            <ArrowRightIcon className="absolute bottom-8 right-8 w-6 h-6 text-gray-400 group-hover:text-gray-900 transition-colors" />
+          </a>
 
-          <div className="bg-gray-300 text-gray-600 font-semibold py-6 px-4 rounded-lg text-center">
-            <div className="text-xl mb-2">📱</div>
-            <div>スマホ画面</div>
-            <div className="text-xs mt-2">QRコードからアクセス</div>
+          {/* スマホ画面 */}
+          <div className="relative bg-white border-2 border-gray-200 rounded-xl p-12 opacity-50">
+            <div className="flex flex-col items-start">
+              <DevicePhoneMobileIcon className="w-12 h-12 text-gray-700 mb-6" />
+              <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+                スマホ画面
+              </h2>
+              <p className="text-gray-600 font-light">QRコードでアクセス</p>
+            </div>
           </div>
+        </div>
+
+        {/* フッター */}
+        <div className="mt-20 text-center">
+          <p className="text-sm text-gray-500 font-light">
+            ElectricSQL × TanStack による リアルタイム同期システム
+          </p>
         </div>
       </div>
     </div>
