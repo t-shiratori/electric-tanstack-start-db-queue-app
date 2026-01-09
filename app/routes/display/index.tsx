@@ -45,24 +45,24 @@ function DisplayComponent() {
         {/* 統計情報 */}
         <div className="grid grid-cols-3 gap-6 mb-16">
           <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-xl p-10 text-center border-2 border-white border-opacity-20">
-            <div className="text-7xl font-semibold text-white mb-3">
+            <div className="text-7xl font-semibold text-gray-800 mb-3">
               {stats.totalWaiting}
             </div>
-            <div className="text-gray-300 text-lg font-medium">待機中</div>
+            <div className="text-gray-800 text-lg font-medium">待機中</div>
           </div>
 
           <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-xl p-10 text-center border-2 border-white border-opacity-20">
-            <div className="text-7xl font-semibold text-white mb-3">
+            <div className="text-7xl font-semibold text-gray-800 mb-3">
               {stats.totalCalled}
             </div>
-            <div className="text-gray-300 text-lg font-medium">呼び出し中</div>
+            <div className="text-gray-800 text-lg font-medium">呼び出し中</div>
           </div>
 
           <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-xl p-10 text-center border-2 border-white border-opacity-20">
-            <div className="text-7xl font-semibold text-white mb-3">
+            <div className="text-7xl font-semibold text-gray-800 mb-3">
               {stats.averageWaitTime.toFixed(0)}
             </div>
-            <div className="text-gray-300 text-lg font-medium">
+            <div className="text-gray-800 text-lg font-medium">
               平均待ち時間 (分)
             </div>
           </div>
@@ -114,8 +114,8 @@ function DisplayComponent() {
             </div>
           ) : (
             <div className="text-center py-20">
-              <div className="text-8xl mb-6 text-white opacity-20">—</div>
-              <div className="text-2xl text-gray-300 font-light">
+              <div className="text-8xl mb-6 text-gray-800 opacity-20">—</div>
+              <div className="text-2xl text-gray-800 font-light">
                 呼び出し中のエントリーはありません
               </div>
             </div>
