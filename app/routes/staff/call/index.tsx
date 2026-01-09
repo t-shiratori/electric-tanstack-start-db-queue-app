@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, ClientOnly } from '@tanstack/react-router'
 import {
   ArrowLeftIcon,
   BellIcon,
@@ -15,7 +15,11 @@ import {
 } from '~/db'
 
 export const Route = createFileRoute('/staff/call/')({
-  component: CallComponent,
+  component: () => (
+    <ClientOnly fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center"><div className="text-gray-600">読み込み中...</div></div>}>
+      <CallComponent />
+    </ClientOnly>
+  ),
 })
 
 /**
