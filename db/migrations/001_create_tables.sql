@@ -40,7 +40,7 @@ CREATE INDEX IF NOT EXISTS idx_entry_event_type ON entry_event(type);
 
 -- Insert a default queue for testing
 INSERT INTO queue (id, name, status)
-VALUES ('00000000-0000-0000-0000-000000000001', 'デフォルト店舗', 'open')
+VALUES ('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'デフォルト店舗', 'open')
 ON CONFLICT DO NOTHING;
 
 -- Comments for documentation

@@ -1,9 +1,5 @@
 import { entriesCollection, entryEventsCollection } from './collections'
 
-// ElectricSQL設定
-export const ELECTRIC_URL =
-  import.meta.env.VITE_ELECTRIC_URL || 'http://localhost:3000'
-
 // コレクションを直接エクスポート
 export const entriesDB = entriesCollection
 export const entryEventsDB = entryEventsCollection

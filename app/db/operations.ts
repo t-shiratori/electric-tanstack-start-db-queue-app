@@ -1,32 +1,13 @@
-import type { EntryEventType, WriteResponse } from './types'
-
-/**
- * APIエンドポイント経由でPostgreSQLデータベースに書き込む
- */
-async function writeToDatabase(
-  sql: string,
-  params?: unknown[]
-): Promise<WriteResponse> {
-  try {
-    const response = await fetch('/api/db/write', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sql, params }),
-    })
-
-    if (!response.ok) {
-      throw new Error(`Database write failed: ${response.statusText}`)
-    }
-
-    return { success: true }
-  } catch (error) {
-    console.error('Database write error:', error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    }
-  }
-}
+import type {
+  EntryEventType,
+  WriteResponse,
+  EventActor,
+} from './types'
+import { toDbEventType } from './types'
+import { UuidValidationSchema, type Uuid } from './validation-schemas'
+import { entriesCollection, entryEventsCollection } from './collections'
+import { getNextTicketNumber as getNextTicketNumberFn } from './server-functions'
+import { generateUuid } from '~/utils/uuid'
 
 /**
  * スマホアクセス用のユニークなトークンを生成
@@ -49,37 +30,57 @@ export async function createEntry(
   ticketNumber: number,
   partySize: number = 1
 ): Promise<WriteResponse & { entryId?: string; token?: string }> {
-  const entryId = crypto.randomUUID()
+  const entryId = generateUuid()
   const token = generateToken()
 
-  // エントリーを挿入
-  const entrySql = `
-    INSERT INTO entry (id, queue_id, number, party_size, public_token, created_at)
-    VALUES ($1, $2, $3, $4, $5, now())
-  `
-  const entryParams = [entryId, queueId, ticketNumber, partySize, token]
+  try {
+    // 1. エントリーを挿入し、Transactionオブジェクトを取得
+    const entryTx = entriesCollection.insert({
+      id: entryId,
+      queue_id: queueId,
+      number: ticketNumber,
+      party_size: partySize,
+      public_token: token,
+      created_at: new Date(),
+    })
 
-  const entryResult = await writeToDatabase(entrySql, entryParams)
-  if (!entryResult.success) {
-    return entryResult
-  }
+    // 2. entryの挿入が完了するまで待機（サーバーへの書き込み + ElectricSQL同期完了）
+    // isPersisted.promiseは、onInsertハンドラーが完了し、
+    // ElectricSQLでtxidが同期されるまで待機する
+    await entryTx.isPersisted.promise
 
-  // EntryCreatedイベントを挿入
-  const eventSql = `
-    INSERT INTO entry_event (id, entry_id, type, created_at, actor)
-    VALUES ($1, $2, $3, now(), $4)
-  `
-  const eventParams = [crypto.randomUUID(), entryId, 'created', 'staff']
+    // 3. ElectricSQLのshapeストリームから実際のデータが届くまで待機
+    // txidが同期されても、データの到着まで若干のラグがあるため
+    await new Promise(resolve => setTimeout(resolve, 100))
 
-  const eventResult = await writeToDatabase(eventSql, eventParams)
-  if (!eventResult.success) {
-    return eventResult
-  }
+    // 4. entryの挿入完了後、entry_eventを挿入
+    // この時点でentryはすでにデータベースに存在するため、外部キー制約を満たせる
+    const eventTx = entryEventsCollection.insert({
+      id: generateUuid(),
+      entry_id: entryId,
+      type: 'created',
+      actor: 'staff',
+      device_id: null,
+      created_at: new Date(),
+    })
 
-  return {
-    success: true,
-    entryId,
-    token,
+    // 5. eventの挿入が完了するまで待機
+    await eventTx.isPersisted.promise
+
+    // 6. イベントのデータ到着も待機
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    return {
+      success: true,
+      entryId,
+      token,
+    }
+  } catch (error) {
+    console.error('Create entry error:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
   }
 }
 
@@ -89,21 +90,29 @@ export async function createEntry(
 export async function addEntryEvent(
   entryId: string,
   eventType: Exclude<EntryEventType, 'EntryCreated'>,
-  actor: 'staff' | 'system' | 'user' = 'staff',
+  actor: EventActor = 'staff',
   deviceId?: string
 ): Promise<WriteResponse> {
-  const eventId = crypto.randomUUID()
+  try {
+    // TanStack DBのcollection.insert()を使用してイベントを挿入
+    // onInsertハンドラーが自動的にサーバー関数を呼び出す
+    entryEventsCollection.insert({
+      id: generateUuid(),
+      entry_id: entryId,
+      type: toDbEventType(eventType),
+      actor,
+      device_id: deviceId || null,
+      created_at: new Date(),
+    })
 
-  // イベントタイプをデータベースのenum値にマッピング
-  const dbEventType = eventType.replace('Entry', '').toLowerCase()
-
-  const sql = `
-    INSERT INTO entry_event (id, entry_id, type, created_at, actor, device_id)
-    VALUES ($1, $2, $3, now(), $4, $5)
-  `
-  const params = [eventId, entryId, dbEventType, actor, deviceId || null]
-
-  return writeToDatabase(sql, params)
+    return { success: true }
+  } catch (error) {
+    console.error('Add entry event error:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
+  }
 }
 
 /**
@@ -141,7 +150,7 @@ export async function skipEntry(
  */
 export async function cancelEntry(
   entryId: string,
-  actor: 'staff' | 'user' = 'user'
+  actor: Extract<EventActor, 'staff' | 'user'> = 'user'
 ): Promise<WriteResponse> {
   return addEntryEvent(entryId, 'EntryCancelled', actor)
 }
@@ -150,17 +159,13 @@ export async function cancelEntry(
  * 待ち行列の次の番号を取得
  */
 export async function getNextTicketNumber(
-  queueId: string
+  queueId: Uuid
 ): Promise<{ number: number } | { error: string }> {
   try {
-    const response = await fetch(`/api/queue/${queueId}/next-number`)
-
-    if (!response.ok) {
-      throw new Error(`Failed to get next number: ${response.statusText}`)
-    }
-
-    const data = await response.json()
-    return { number: data.number }
+    // queueIdのバリデーション
+    const validatedQueueId = UuidValidationSchema.parse(queueId)
+    const result = await getNextTicketNumberFn({ data: validatedQueueId })
+    return { number: result.number }
   } catch (error) {
     console.error('Get next number error:', error)
     return {

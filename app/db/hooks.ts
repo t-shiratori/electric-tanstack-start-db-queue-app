@@ -122,7 +122,7 @@ export function useEntryStates(): EntryCurrentState[] {
     query
       .from({ entry: entriesDB })
       .leftJoin({ event: entryEventsDB }, ({ entry, event }) =>
-        eq(entry.id, event.entryId)
+        eq(entry.id, event.entry_id)
       )
       .select(({ entry, event }) => ({
         id: entry.id,
@@ -226,7 +226,7 @@ export function useEntryByToken(token: string): EntryCurrentState | undefined {
     query
       .from({ entry: entriesDB })
       .leftJoin({ event: entryEventsDB }, ({ entry, event }) =>
-        eq(entry.id, event.entryId)
+        eq(entry.id, event.entry_id)
       )
       .where(({ entry }) => eq(entry.public_token, token))
       .select(({ entry, event }) => ({

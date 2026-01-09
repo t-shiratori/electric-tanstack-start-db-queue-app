@@ -13,6 +13,9 @@ build/
 .env.local
 .env.*.local
 
+# Generated files (from templates)
+Caddyfile
+
 # TypeScript
 *.tsbuildinfo
 
@@ -46,3 +49,5 @@ postgres_data/
 coverage/
 
 design-docs
+examples
+notes

@@ -13,38 +13,135 @@ TanStack Start × TanStack DB × ElectricSQL による Local-First アプリケ�
 
 - **フレームワーク**: TanStack Start (React)
 - **スタイリング**: Tailwind CSS v4
-- **データベース**: PostgreSQL
+- **データベース**: PostgreSQL 17
 - **ローカルDB**: TanStack DB
 - **同期**: ElectricSQL
 - **パッケージ管理**: pnpm
 
 ## セットアップ
 
-### 1. 依存関係のインストール
+### 前提条件
+
+このプロジェクトは[mise](https://mise.jdx.dev/)でツールを管理しています。
+
+miseがインストールされていない場合 [Getting Started | mise-en-place](https://mise.jdx.dev/getting-started.html) を参照してください。
+
+### 1. 開発ツールのインストール
+
+mise.tomlに定義されたツール（Node.js、pnpm、Caddy）を一括インストールします:
+
+```bash
+mise install
+```
+
+これにより以下がインストールされます:
+- Node.js 22
+- pnpm (latest)
+- Caddy (latest)
+
+### 2. 依存関係のインストール
 
 ```bash
 pnpm install
 ```
 
-### 2. Dockerでデータベースを起動
+### 3. 環境変数の設定
+
+`.env.example`をコピーして`.env`ファイルを作成します:
+
+```bash
+cp .env.example .env
+```
+
+**重要**: `.env`ファイルを編集して、以下の設定を自分の環境に合わせて変更してください:
+
+```bash
+# ローカルネットワークのIPアドレス（スマホからアクセス用）
+VITE_LOCAL_IP_ADDRESS=192.168.x.x  ← 自分のIPアドレスに変更
+
+# 開発サーバーのポート（デフォルト: 5173）
+VITE_DEV_PORT=5173
+
+# ローカル開発用のホスト名（オプション、デフォルトのままでOK）
+VITE_LOCAL_HOSTNAME=queue-app.localhost
+
+# データベース接続URL
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:PORT/DATABASE_NAME
+
+# ElectricSQL同期URL（自動的にVITE_LOCAL_IP_ADDRESSを使用）
+VITE_ELECTRIC_URL=https://${VITE_LOCAL_IP_ADDRESS}/v1/shape
+```
+
+IPアドレスの確認方法:
+```bash
+# macOS/Linux
+ifconfig | grep "inet " | grep -v 127.0.0.1
+
+# Windows
+ipconfig
+```
+
+### 4. Caddyfileの生成
+
+環境変数からCaddyfileを生成します:
+
+```bash
+pnpm generate:caddy
+```
+
+これにより、`.env`で設定したIPアドレスを使用したCaddyfileが生成されます。
+
+### 5. Caddyの起動（HTTPS開発環境）
+
+このアプリケーションはHTTPS環境で動作することを前提としています（UUID生成にcrypto.randomUUID()を使用するため）。
+
+Caddyを起動してHTTPSリバースプロキシを有効にします:
+
+```bash
+caddy run
+```
+
+これにより https://queue-app.localhost でアクセス可能になります。
+
+注意: 初回アクセス時にブラウザで自己署名証明書の警告が表示されますが、開発環境では問題ありません。
+
+### 6. Dockerでデータベースを起動
 
 ```bash
 docker compose up -d
 ```
 
-### 3. データベースの初期化
+このコマンドでPostgreSQLとElectricSQLが起動します。
+
+### 7. データベースの初期化
+
+マイグレーションを実行してテーブルを作成します。
 
 ```bash
-./db/setup.sh
+docker exec -i queue-app-postgres psql -U postgres -d queue_app < db/migrations/001_create_tables.sql
 ```
 
-### 4. 開発サーバーの起動
+### 8. 開発サーバーの起動
 
 ```bash
 pnpm dev
 ```
 
-アプリケーションは http://localhost:3002 で起動します。
+アプリケーションは http://localhost:5173 (または`.env`で設定したVITE_DEV_PORT) で起動します。
+
+**推奨**: Caddyを経由してHTTPSでアクセスしてください: https://queue-app.localhost
+
+HTTPSが必要な理由: このアプリはUUID生成に`crypto.randomUUID()`を使用するため、安全なコンテキスト（HTTPS）が必要です。
+
+### データベースの再起動
+
+データベースを完全にリセットして再起動する場合:
+
+```bash
+docker compose down -v
+docker compose up -d
+docker exec -i queue-app-postgres psql -U postgres -d queue_app < db/migrations/001_create_tables.sql
+```
 
 ## 画面構成
 
@@ -89,6 +186,41 @@ entry_event (ログ) → マテリアライズドビュー → 現在の状態
 ```
 
 ## 開発
+
+### データベースの確認
+
+PostgreSQLのテーブル内容を確認するには、以下のコマンドを使用します。
+
+```bash
+# すべてのテーブル一覧を表示
+docker exec queue-app-postgres psql -U postgres -d queue_app -c "\dt"
+
+# queueテーブルの内容を表示
+docker exec queue-app-postgres psql -U postgres -d queue_app -c "SELECT * FROM queue;"
+
+# entryテーブルの内容を表示
+docker exec queue-app-postgres psql -U postgres -d queue_app -c "SELECT * FROM entry;"
+
+# entry_eventテーブルの内容を表示
+docker exec queue-app-postgres psql -U postgres -d queue_app -c "SELECT * FROM entry_event;"
+
+# エントリーとイベントを結合して表示
+docker exec queue-app-postgres psql -U postgres -d queue_app -c "
+  SELECT e.number, e.party_size, e.public_token,
+         ee.type, ee.actor, ee.created_at
+  FROM entry e
+  LEFT JOIN entry_event ee ON e.id = ee.entry_id
+  ORDER BY e.number, ee.created_at;
+"
+```
+
+### マイグレーションの手動実行
+
+必要に応じてマイグレーションを手動で実行できます。
+
+```bash
+docker exec -i queue-app-postgres psql -U postgres -d queue_app < db/migrations/001_create_tables.sql
+```
 
 ### ビルド
 

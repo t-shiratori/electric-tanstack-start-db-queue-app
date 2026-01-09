@@ -1,4 +1,12 @@
 /**
+ * イベント実行者の種類
+ * - staff: スタッフ
+ * - system: システム
+ * - user: ユーザー
+ */
+export type EventActor = 'staff' | 'system' | 'user'
+
+/**
  * エントリーイベントタイプ
  * イベントソーシングパターンで使用するイベントの種類
  * - EntryCreated: エントリー作成（初期状態）
@@ -13,6 +21,27 @@ export type EntryEventType =
   | 'EntryDone'
   | 'EntrySkipped'
   | 'EntryCancelled'
+
+/**
+ * データベースのイベントタイプ
+ * PostgreSQLのenum値に対応
+ */
+export type DbEventType = 'created' | 'called' | 'done' | 'skipped' | 'cancelled'
+
+/**
+ * EntryEventTypeをDbEventTypeに変換
+ * 型安全な変換マッピング
+ */
+export function toDbEventType(eventType: EntryEventType): DbEventType {
+  const mapping: Record<EntryEventType, DbEventType> = {
+    EntryCreated: 'created',
+    EntryCalled: 'called',
+    EntryDone: 'done',
+    EntrySkipped: 'skipped',
+    EntryCancelled: 'cancelled',
+  }
+  return mapping[eventType]
+}
 
 /**
  * エントリーコレクションスキーマ

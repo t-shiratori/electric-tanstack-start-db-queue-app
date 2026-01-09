@@ -1,0 +1,49 @@
+# Caddy設定ファイル
+# Vite開発サーバー（${VITE_LOCAL_IP_ADDRESS}:${VITE_DEV_PORT}）とElectricSQL（localhost:3000）をHTTPSでプロキシ
+
+# ローカル開発用のホスト名
+# .localhost ドメインは自動的に 127.0.0.1 に解決される
+${VITE_LOCAL_HOSTNAME} {
+	# ElectricSQLへのプロキシ（/v1/*パス）
+	handle /v1/* {
+		reverse_proxy localhost:3000
+	}
+
+	# Vite開発サーバーへのプロキシ（その他すべて）
+	handle {
+		reverse_proxy ${VITE_LOCAL_IP_ADDRESS}:${VITE_DEV_PORT}
+	}
+
+	# WebSocketのサポート（Vite HMR用）
+	@websockets {
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	reverse_proxy @websockets ${VITE_LOCAL_IP_ADDRESS}:${VITE_DEV_PORT}
+
+	# 自己署名証明書を使用（開発環境用）
+	tls internal
+}
+
+# スマホなど他のデバイスからアクセスするためのIPアドレス設定
+${VITE_LOCAL_IP_ADDRESS} {
+	# ElectricSQLへのプロキシ（/v1/*パス）
+	handle /v1/* {
+		reverse_proxy localhost:3000
+	}
+
+	# Vite開発サーバーへのプロキシ（その他すべて）
+	handle {
+		reverse_proxy ${VITE_LOCAL_IP_ADDRESS}:${VITE_DEV_PORT}
+	}
+
+	# WebSocketのサポート（Vite HMR用）
+	@websockets {
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	reverse_proxy @websockets ${VITE_LOCAL_IP_ADDRESS}:${VITE_DEV_PORT}
+
+	# 自己署名証明書を使用（開発環境用）
+	tls internal
+}

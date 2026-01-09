@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, ClientOnly } from '@tanstack/react-router'
 import { useState } from 'react'
 import QRCode from 'qrcode'
 import { ArrowLeftIcon, UserGroupIcon } from '@heroicons/react/24/outline'
@@ -8,9 +8,15 @@ import {
   createEntry,
   getNextTicketNumber,
 } from '~/db'
+import type { Uuid } from '~/db/validation-schemas'
+import { getNetworkAccessibleBaseUrl } from '~/infra'
 
 export const Route = createFileRoute('/staff/reception/')({
-  component: ReceptionComponent,
+  component: () => (
+    <ClientOnly fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center"><div className="text-gray-600">読み込み中...</div></div>}>
+      <ReceptionComponent />
+    </ClientOnly>
+  ),
 })
 
 /**
@@ -31,7 +37,8 @@ function ReceptionComponent() {
   const [isCreating, setIsCreating] = useState(false)
 
   // 固定のキューID（将来的には複数キュー対応も可能）
-  const QUEUE_ID = 'default-queue'
+  // RFC 4122準拠のUUID v4をデフォルトキューとして使用
+  const QUEUE_ID: Uuid = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
 
   /**
    * 新規エントリーを作成
@@ -59,7 +66,9 @@ function ReceptionComponent() {
       }
 
       // QRコードを生成
-      const entryUrl = `${window.location.origin}/entry/${result.token}`
+      // ローカルネットワークからアクセス可能なURLを生成
+      const baseUrl = getNetworkAccessibleBaseUrl()
+      const entryUrl = `${baseUrl}/entry/${result.token}`
       const qrCodeUrl = await QRCode.toDataURL(entryUrl, {
         width: 300,
         margin: 2,

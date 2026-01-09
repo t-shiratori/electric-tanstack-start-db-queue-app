@@ -1,8 +1,12 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, ClientOnly } from '@tanstack/react-router'
 import { useQueueStats, useCalledEntries } from '~/db'
 
 export const Route = createFileRoute('/display/')({
-  component: DisplayComponent,
+  component: () => (
+    <ClientOnly fallback={<div className="min-h-screen bg-gray-900 flex items-center justify-center"><div className="text-gray-300">読み込み中...</div></div>}>
+      <DisplayComponent />
+    </ClientOnly>
+  ),
 })
 
 /**

@@ -17,7 +17,6 @@ export {
   entriesDB,
   entryEventsDB,
   initElectricSync,
-  ELECTRIC_URL,
 } from './client'
 
 // 操作
