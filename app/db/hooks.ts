@@ -23,15 +23,16 @@ import type {
 
 /**
  * JOINクエリの結果のバリデーションスキーマ
+ * PostgreSQLのTIMESTAMPTZ型は文字列として返されるため、z.coerce.date()で変換する
  */
 const JoinedEntryEventRowSchema = z.object({
   id: UuidValidationSchema,
   ticketNumber: z.number().int().positive(),
-  createdAt: z.date(),
+  createdAt: z.coerce.date(),
   token: z.string().length(8),
   eventId: UuidValidationSchema.nullable().optional(),
   eventType: z.enum(DB_EVENT_TYPES).nullable().optional(),
-  eventCreatedAt: z.date().nullable().optional(),
+  eventCreatedAt: z.coerce.date().nullable().optional(),
   eventActor: z.enum(EVENT_ACTORS).nullable().optional(),
 })
 
