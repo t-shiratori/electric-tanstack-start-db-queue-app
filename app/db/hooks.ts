@@ -1,58 +1,72 @@
 import { eq, useLiveQuery } from '@tanstack/react-db'
 import { useMemo } from 'react'
+import { z } from 'zod'
 import { entriesDB, entryEventsDB } from './client'
+import {
+  DB_EVENT_TYPE_TO_ENTRY_EVENT_TYPE,
+  DB_EVENT_TYPES,
+  ENTRY_EVENT_TYPE,
+  ENTRY_EVENT_TYPE_TO_STATE,
+  ENTRY_STATE,
+  EVENT_ACTORS,
+} from './const'
+import { UuidValidationSchema } from './validation-schemas'
 import type {
+  DbEventType,
   EntryCurrentState,
   EntryEventSchema,
   EntrySchema,
   EntryState,
+  EntryEventType,
   QueueStats,
 } from './types'
+
+/**
+ * JOINクエリの結果のバリデーションスキーマ
+ */
+const JoinedEntryEventRowSchema = z.object({
+  id: UuidValidationSchema,
+  ticketNumber: z.number().int().positive(),
+  createdAt: z.date(),
+  token: z.string().length(8),
+  eventId: UuidValidationSchema.nullable().optional(),
+  eventType: z.enum(DB_EVENT_TYPES).nullable().optional(),
+  eventCreatedAt: z.date().nullable().optional(),
+  eventActor: z.enum(EVENT_ACTORS).nullable().optional(),
+})
+
+type JoinedEntryEventRow = z.infer<typeof JoinedEntryEventRowSchema>
+
+/**
+ * DbEventTypeをEntryEventTypeに変換
+ */
+function toEntryEventType(dbEventType: DbEventType): EntryEventType {
+  return DB_EVENT_TYPE_TO_ENTRY_EVENT_TYPE[dbEventType]
+}
 
 /**
  * イベントソーシングパターンを使用してイベントから現在の状態を導出
  * 最新のイベントが優先順位に従って優先される
  */
 function deriveEntryState(events: EntryEventSchema[]): EntryState {
-  if (events.length === 0) return 'waiting'
+  if (events.length === 0) return ENTRY_STATE.WAITING
 
   // イベントを作成時刻でソート（新しい順）
   const sortedEvents = [...events].sort(
     (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
   )
 
-  // 状態の優先順位（最新の一致するイベントが優先）
+  // 最新のイベントから状態を導出
   const latestEvent = sortedEvents[0]
-
-  switch (latestEvent.type) {
-    case 'EntryCancelled':
-      return 'cancelled'
-    case 'EntryDone':
-      return 'done'
-    case 'EntrySkipped':
-      return 'skipped'
-    case 'EntryCalled':
-      return 'called'
-    case 'EntryCreated':
-    default:
-      return 'waiting'
-  }
+  return ENTRY_EVENT_TYPE_TO_STATE[latestEvent.type]
 }
 
 /**
  * join結果からEntryCurrentStateの配列を構築するヘルパー関数
+ * バリデーション済みのデータを受け取る
  */
 function buildEntryStatesFromJoinedData(
-  joinedData: Array<{
-    id: unknown
-    ticketNumber: unknown
-    createdAt: unknown
-    token: unknown
-    eventId: unknown
-    eventType: unknown
-    eventCreatedAt: unknown
-    eventActor: unknown
-  }>
+  joinedData: JoinedEntryEventRow[]
 ): EntryCurrentState[] {
   // エントリーIDでグループ化
   const entriesMap = new Map<
@@ -64,28 +78,26 @@ function buildEntryStatesFromJoinedData(
   >()
 
   for (const row of joinedData) {
-    const entryId = row.id as string
-
-    if (!entriesMap.has(entryId)) {
-      entriesMap.set(entryId, {
+    if (!entriesMap.has(row.id)) {
+      entriesMap.set(row.id, {
         entry: {
-          id: entryId,
-          ticketNumber: row.ticketNumber as number,
-          createdAt: row.createdAt as Date,
-          token: row.token as string,
+          id: row.id,
+          ticketNumber: row.ticketNumber,
+          createdAt: row.createdAt,
+          token: row.token,
         },
         events: [],
       })
     }
 
     // イベントが存在する場合のみ追加
-    if (row.eventId) {
-      entriesMap.get(entryId)!.events.push({
-        id: row.eventId as string,
-        entryId: entryId,
-        type: row.eventType as EntryEventSchema['type'],
-        createdAt: row.eventCreatedAt as Date,
-        actor: row.eventActor as EntryEventSchema['actor'],
+    if (row.eventId && row.eventType && row.eventActor && row.eventCreatedAt) {
+      entriesMap.get(row.id)!.events.push({
+        id: row.eventId,
+        entryId: row.id,
+        type: toEntryEventType(row.eventType),
+        createdAt: row.eventCreatedAt,
+        actor: row.eventActor,
       })
     }
   }
@@ -103,7 +115,7 @@ function buildEntryStatesFromJoinedData(
       ...entry,
       state,
       lastEventAt: lastEvent?.createdAt ?? entry.createdAt,
-      lastEventType: lastEvent?.type ?? 'EntryCreated',
+      lastEventType: lastEvent?.type ?? ENTRY_EVENT_TYPE.CREATED,
     }
   })
 }
@@ -137,10 +149,11 @@ export function useEntryStates(): EntryCurrentState[] {
       .orderBy(({ entry }) => entry.number, 'asc')
   )
 
-  return useMemo(
-    () => buildEntryStatesFromJoinedData(entriesWithEvents),
-    [entriesWithEvents]
-  )
+  return useMemo(() => {
+    // Zodスキーマでバリデーション
+    const validatedData = z.array(JoinedEntryEventRowSchema).parse(entriesWithEvents)
+    return buildEntryStatesFromJoinedData(validatedData)
+  }, [entriesWithEvents])
 }
 
 /**
@@ -242,7 +255,9 @@ export function useEntryByToken(token: string): EntryCurrentState | undefined {
   )
 
   return useMemo(() => {
-    const states = buildEntryStatesFromJoinedData(entriesWithEvents)
+    // Zodスキーマでバリデーション
+    const validatedData = z.array(JoinedEntryEventRowSchema).parse(entriesWithEvents)
+    const states = buildEntryStatesFromJoinedData(validatedData)
     return states[0]
   }, [entriesWithEvents])
 }
