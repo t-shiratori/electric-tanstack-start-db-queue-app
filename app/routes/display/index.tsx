@@ -87,18 +87,18 @@ function DisplayComponent() {
                 >
                   <div className="flex items-center gap-8">
                     {index === 0 && (
-                      <div className="bg-white bg-opacity-30 text-white font-medium text-xs px-4 py-2 rounded-full">
+                      <div className="bg-white bg-opacity-30 text-gray-800 font-medium text-xs px-4 py-2 rounded-full">
                         最新
                       </div>
                     )}
-                    <div className="text-8xl font-semibold text-white">
+                    <div className="text-8xl font-semibold text-gray-800">
                       {entry.ticketNumber}
                     </div>
                     <div>
-                      <div className="text-sm text-gray-300 mb-1 font-medium">
+                      <div className="text-sm text-gray-800 mb-1 font-medium">
                         呼び出し時刻
                       </div>
-                      <div className="text-2xl font-medium text-white">
+                      <div className="text-2xl font-medium text-gray-800">
                         {new Date(entry.lastEventAt).toLocaleTimeString(
                           'ja-JP',
                           {
