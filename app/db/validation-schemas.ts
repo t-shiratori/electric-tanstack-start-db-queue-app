@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { DB_EVENT_TYPES, EVENT_ACTORS } from './const'
 
 /**
  * UUID文字列のバリデーションスキーマ
@@ -43,3 +44,20 @@ export type InsertEntry = z.infer<typeof InsertEntryValidationSchema>
 
 export const InsertEntryEventValidationSchema = EntryEventValidationSchema.omit({ created_at: true })
 export type InsertEntryEvent = z.infer<typeof InsertEntryEventValidationSchema>
+
+/**
+ * JOINクエリの結果のバリデーションスキーマ
+ * PostgreSQLのTIMESTAMPTZ型は文字列として返されるため、z.coerce.date()で変換する
+ */
+export const JoinedEntryEventRowSchema = z.object({
+  id: UuidValidationSchema,
+  ticketNumber: z.number().int().positive(),
+  createdAt: z.coerce.date(),
+  token: z.string().length(8),
+  eventId: UuidValidationSchema.nullable().optional(),
+  eventType: z.enum(DB_EVENT_TYPES).nullable().optional(),
+  eventCreatedAt: z.coerce.date().nullable().optional(),
+  eventActor: z.enum(EVENT_ACTORS).nullable().optional(),
+})
+
+export type JoinedEntryEventRow = z.infer<typeof JoinedEntryEventRowSchema>

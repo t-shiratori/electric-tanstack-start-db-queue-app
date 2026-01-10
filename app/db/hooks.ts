@@ -10,7 +10,7 @@ import {
   ENTRY_STATE,
   EVENT_ACTORS,
 } from './const'
-import { UuidValidationSchema } from './validation-schemas'
+import { JoinedEntryEventRow, JoinedEntryEventRowSchema, UuidValidationSchema } from './validation-schemas'
 import type {
   DbEventType,
   EntryCurrentState,
@@ -21,22 +21,6 @@ import type {
   QueueStats,
 } from './types'
 
-/**
- * JOINクエリの結果のバリデーションスキーマ
- * PostgreSQLのTIMESTAMPTZ型は文字列として返されるため、z.coerce.date()で変換する
- */
-const JoinedEntryEventRowSchema = z.object({
-  id: UuidValidationSchema,
-  ticketNumber: z.number().int().positive(),
-  createdAt: z.coerce.date(),
-  token: z.string().length(8),
-  eventId: UuidValidationSchema.nullable().optional(),
-  eventType: z.enum(DB_EVENT_TYPES).nullable().optional(),
-  eventCreatedAt: z.coerce.date().nullable().optional(),
-  eventActor: z.enum(EVENT_ACTORS).nullable().optional(),
-})
-
-type JoinedEntryEventRow = z.infer<typeof JoinedEntryEventRowSchema>
 
 /**
  * DbEventTypeをEntryEventTypeに変換
