@@ -67,9 +67,6 @@ export async function createEntry(
     // 5. eventの挿入が完了するまで待機
     await eventTx.isPersisted.promise
 
-    // 6. イベントのデータ到着も待機
-    await new Promise(resolve => setTimeout(resolve, 100))
-
     return {
       success: true,
       entryId,
