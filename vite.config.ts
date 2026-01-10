@@ -7,7 +7,7 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const localIp = env.LOCAL_IP_ADDRESS
+  const localIp = env.VITE_LOCAL_IP_ADDRESS
   const localHostname = env.VITE_LOCAL_HOSTNAME
   const devPort = parseInt(env.VITE_DEV_PORT, 10)
 
