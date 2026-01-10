@@ -4,9 +4,6 @@ import {
   InsertEntryValidationSchema,
   InsertEntryEventValidationSchema,
   UuidValidationSchema,
-  type InsertEntry,
-  type InsertEntryEvent,
-  type Uuid,
 } from './validation-schemas'
 import { DATABASE_URL } from '~/infra'
 
@@ -17,10 +14,9 @@ const pool = new Pool({
 })
 
 export const insertEntry = createServerFn({ method: 'POST' })
-  .inputValidator((data: InsertEntry) => data)
+  .inputValidator(InsertEntryValidationSchema)
   .handler(async ({ data }) => {
-    const validated = InsertEntryValidationSchema.parse(data)
-    const { id, queue_id, number, party_size, public_token } = validated
+    const { id, queue_id, number, party_size, public_token } = data
 
     console.log('='.repeat(60))
     console.log('📝 整理券発行')
@@ -52,10 +48,9 @@ export const insertEntry = createServerFn({ method: 'POST' })
   })
 
 export const insertEntryEvent = createServerFn({ method: 'POST' })
-  .inputValidator((data: InsertEntryEvent) => data)
+  .inputValidator(InsertEntryEventValidationSchema)
   .handler(async ({ data }) => {
-    const validated = InsertEntryEventValidationSchema.parse(data)
-    const { id, entry_id, type, actor, device_id } = validated
+    const { id, entry_id, type, actor, device_id } = data
 
     const eventTypeMap: Record<string, string> = {
       created: '受付',
@@ -83,10 +78,7 @@ export const insertEntryEvent = createServerFn({ method: 'POST' })
   })
 
 export const getNextTicketNumber = createServerFn({ method: 'GET' })
-  .inputValidator((queueId: Uuid) => {
-    const validated = UuidValidationSchema.parse(queueId)
-    return validated
-  })
+  .inputValidator(UuidValidationSchema)
   .handler(async ({ data: queueId }) => {
     try {
       const result = await pool.query(
