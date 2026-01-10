@@ -2,6 +2,11 @@ import type { DbEventType, EntryEventType, EntryState, EventActor } from './type
 
 /**
  * データベースのイベントタイプ定数
+ * @property CREATED 作成
+ * @property CALLED 呼び出し
+ * @property DONE 完了
+ * @property SKIPPED スキップ
+ * @property CANCELLED キャンセル
  */
 export const DB_EVENT_TYPE = {
   CREATED: 'created',
@@ -21,6 +26,11 @@ export const DB_EVENT_TYPES = [
 
 /**
  * アプリケーションのイベントタイプ定数
+ * @property CREATED エントリー作成
+ * @property CALLED エントリー呼び出し
+ * @property DONE エントリー完了
+ * @property SKIPPED エントリースキップ
+ * @property CANCELLED エントリーキャンセル
  */
 export const ENTRY_EVENT_TYPE = {
   CREATED: 'EntryCreated',
@@ -32,6 +42,11 @@ export const ENTRY_EVENT_TYPE = {
 
 /**
  * エントリーの状態定数
+ * @property WAITING 待機中
+ * @property CALLED 呼び出し済み
+ * @property DONE 完了
+ * @property SKIPPED スキップ
+ * @property CANCELLED キャンセル
  */
 export const ENTRY_STATE = {
   WAITING: 'waiting',
@@ -43,6 +58,9 @@ export const ENTRY_STATE = {
 
 /**
  * イベント実行者の種類定数
+ * @property STAFF スタッフ
+ * @property SYSTEM システム
+ * @property USER ユーザー
  */
 export const EVENT_ACTOR = {
   STAFF: 'staff',
