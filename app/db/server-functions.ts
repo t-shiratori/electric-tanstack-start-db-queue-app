@@ -5,12 +5,12 @@ import {
   InsertEntryEventValidationSchema,
   UuidValidationSchema,
 } from './validation-schemas'
-import { DATABASE_URL } from '~/infra'
+import { serverEnv } from '~/infra/env.server'
 
 const { Pool } = pg
 
 const pool = new Pool({
-  connectionString: DATABASE_URL,
+  connectionString: serverEnv.DATABASE_URL,
 })
 
 export const insertEntry = createServerFn({ method: 'POST' })

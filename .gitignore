@@ -40,6 +40,9 @@ yarn-error.log*
 # TanStack Router
 app/routeTree.gen.ts
 
+# Tanstack Start
+.tanstack
+
 # Database
 *.db
 *.sqlite
@@ -51,3 +54,4 @@ coverage/
 design-docs
 examples
 notes
+

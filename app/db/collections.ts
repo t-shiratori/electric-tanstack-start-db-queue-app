@@ -2,7 +2,7 @@ import { createCollection } from '@tanstack/react-db'
 import { electricCollectionOptions } from '@tanstack/electric-db-collection'
 import { EntryValidationSchema, EntryEventValidationSchema } from './validation-schemas'
 import { insertEntry, insertEntryEvent } from './server-functions'
-import { ELECTRIC_URL } from '~/infra'
+import { clientEnv } from '~/infra/env.client'
 
 /**
  * エントリーコレクション
@@ -18,7 +18,7 @@ export const entriesCollection = createCollection(
     schema: EntryValidationSchema,
     getKey: (entry) => entry.id,
     shapeOptions: {
-      url: ELECTRIC_URL,
+      url: clientEnv.VITE_ELECTRIC_URL,
       params: {
         table: 'entry',
       },
@@ -57,7 +57,7 @@ export const entryEventsCollection = createCollection(
     schema: EntryEventValidationSchema,
     getKey: (event) => event.id,
     shapeOptions: {
-      url: ELECTRIC_URL,
+      url: clientEnv.VITE_ELECTRIC_URL,
       params: {
         table: 'entry_event',
       },
