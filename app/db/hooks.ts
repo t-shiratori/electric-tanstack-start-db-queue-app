@@ -1,7 +1,7 @@
 import { eq, useLiveQuery } from '@tanstack/react-db'
 import { useMemo } from 'react'
 import { z } from 'zod'
-import { entriesDB, entryEventsDB } from './client'
+import { entriesCollection, entryEventsCollection } from './collections'
 import {
   DB_EVENT_TYPE_TO_ENTRY_EVENT_TYPE,
   DB_EVENT_TYPES,
@@ -117,8 +117,8 @@ function buildEntryStatesFromJoinedData(
 export function useEntryStates(): EntryCurrentState[] {
   const { data: entriesWithEvents = [] } = useLiveQuery((query) =>
     query
-      .from({ entry: entriesDB })
-      .leftJoin({ event: entryEventsDB }, ({ entry, event }) =>
+      .from({ entry: entriesCollection })
+      .leftJoin({ event: entryEventsCollection }, ({ entry, event }) =>
         eq(entry.id, event.entry_id)
       )
       .select(({ entry, event }) => ({
@@ -222,8 +222,8 @@ export function useQueueStats(): QueueStats {
 export function useEntryByToken(token: string): EntryCurrentState | undefined {
   const { data: entriesWithEvents = [] } = useLiveQuery((query) =>
     query
-      .from({ entry: entriesDB })
-      .leftJoin({ event: entryEventsDB }, ({ entry, event }) =>
+      .from({ entry: entriesCollection })
+      .leftJoin({ event: entryEventsCollection }, ({ entry, event }) =>
         eq(entry.id, event.entry_id)
       )
       .where(({ entry }) => eq(entry.public_token, token))

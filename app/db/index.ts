@@ -12,13 +12,6 @@ export type {
 // コレクション
 export { entriesCollection, entryEventsCollection } from './collections'
 
-// データベースクライアント
-export {
-  entriesDB,
-  entryEventsDB,
-  initElectricSync,
-} from './client'
-
 // 操作
 export {
   createEntry,
