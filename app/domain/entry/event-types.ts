@@ -23,51 +23,19 @@ export const ENTRY_EVENT_TYPE = {
 export type DbEventType = 'created' | 'called' | 'done' | 'skipped' | 'cancelled'
 
 /**
- * データベースのイベントタイプ定数
- * @property CREATED 作成
- * @property CALLED 呼び出し
- * @property DONE 完了
- * @property SKIPPED スキップ
- * @property CANCELLED キャンセル
- */
-export const DB_EVENT_TYPE = {
-  CREATED: 'created',
-  CALLED: 'called',
-  DONE: 'done',
-  SKIPPED: 'skipped',
-  CANCELLED: 'cancelled',
-} as const satisfies Record<string, DbEventType>
-
-/**
- * イベントタイプ変換マッピング
- */
-export const EVENT_TYPE_MAPPING = {
-  // Domain -> DB
-  toDb: {
-    [ENTRY_EVENT_TYPE.CREATED]: DB_EVENT_TYPE.CREATED,
-    [ENTRY_EVENT_TYPE.CALLED]: DB_EVENT_TYPE.CALLED,
-    [ENTRY_EVENT_TYPE.DONE]: DB_EVENT_TYPE.DONE,
-    [ENTRY_EVENT_TYPE.SKIPPED]: DB_EVENT_TYPE.SKIPPED,
-    [ENTRY_EVENT_TYPE.CANCELLED]: DB_EVENT_TYPE.CANCELLED,
-  } as const,
-
-  // DB -> Domain
-  toDomain: {
-    [DB_EVENT_TYPE.CREATED]: ENTRY_EVENT_TYPE.CREATED,
-    [DB_EVENT_TYPE.CALLED]: ENTRY_EVENT_TYPE.CALLED,
-    [DB_EVENT_TYPE.DONE]: ENTRY_EVENT_TYPE.DONE,
-    [DB_EVENT_TYPE.SKIPPED]: ENTRY_EVENT_TYPE.SKIPPED,
-    [DB_EVENT_TYPE.CANCELLED]: ENTRY_EVENT_TYPE.CANCELLED,
-  } as const,
-} as const
-
-/**
  * イベントタイプをDBタイプに変換
  * @param eventType 変換元のエントリーイベントタイプ
  * @returns 変換後のデータベースイベントタイプ
  */
 export function toDbEventType(eventType: EntryEventType): DbEventType {
-  return EVENT_TYPE_MAPPING.toDb[eventType]
+  const mapping: Record<EntryEventType, DbEventType> = {
+    [ENTRY_EVENT_TYPE.CREATED]: 'created',
+    [ENTRY_EVENT_TYPE.CALLED]: 'called',
+    [ENTRY_EVENT_TYPE.DONE]: 'done',
+    [ENTRY_EVENT_TYPE.SKIPPED]: 'skipped',
+    [ENTRY_EVENT_TYPE.CANCELLED]: 'cancelled',
+  }
+  return mapping[eventType]
 }
 
 /**
@@ -76,5 +44,12 @@ export function toDbEventType(eventType: EntryEventType): DbEventType {
  * @returns 変換後のエントリーイベントタイプ
  */
 export function toDomainEventType(dbType: DbEventType): EntryEventType {
-  return EVENT_TYPE_MAPPING.toDomain[dbType]
+  const mapping: Record<DbEventType, EntryEventType> = {
+    'created': ENTRY_EVENT_TYPE.CREATED,
+    'called': ENTRY_EVENT_TYPE.CALLED,
+    'done': ENTRY_EVENT_TYPE.DONE,
+    'skipped': ENTRY_EVENT_TYPE.SKIPPED,
+    'cancelled': ENTRY_EVENT_TYPE.CANCELLED,
+  }
+  return mapping[dbType]
 }

@@ -10,11 +10,3 @@ export const electricConfig = {
     timestamptz: (value: string) => new Date(value),
   },
 }
-
-/**
- * ElectricSQL同期を初期化
- * アプリケーション起動時に呼び出される
- */
-export function initElectricSync() {
-  console.log('ElectricSQL sync initialized with URL:', electricConfig.url)
-}
