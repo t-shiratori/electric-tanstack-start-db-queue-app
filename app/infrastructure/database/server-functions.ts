@@ -4,7 +4,7 @@ import {
   InsertDbEntrySchema,
   InsertDbEntryEventSchema,
   UuidSchema,
-} from '../database/schemas'
+} from './schemas'
 
 /**
  * エントリー挿入サーバー関数

@@ -1,7 +1,7 @@
 import { createCollection } from '@tanstack/react-db'
 import { electricCollectionOptions } from '@tanstack/electric-db-collection'
 import { DbEntrySchema, DbEntryEventSchema } from './schemas'
-import { insertEntry, insertEntryEvent } from '../server/functions'
+import { insertEntry, insertEntryEvent } from './server-functions'
 import { electricConfig } from './client'
 
 /**

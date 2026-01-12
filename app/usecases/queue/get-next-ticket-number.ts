@@ -1,5 +1,5 @@
 import { UuidSchema } from '~/infrastructure/database'
-import { getNextTicketNumber as getNextTicketNumberFn } from '~/infrastructure/server'
+import { getNextTicketNumber as getNextTicketNumberFn } from '~/infrastructure/database/server-functions'
 import type { GetNextTicketNumberResult } from '../types'
 
 /**
