@@ -8,7 +8,7 @@ import {
   getNextTicketNumber,
 } from '~/db'
 import type { Uuid } from '~/db/validation-schemas'
-import { LOCAL_NETWORK_BASE_URL } from '~/infra/env.client'
+import { LOCAL_NETWORK_BASE_URL } from '~/infrastructure/env/env.client'
 
 /**
  * 受付端末画面

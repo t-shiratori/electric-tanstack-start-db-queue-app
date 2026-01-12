@@ -2,7 +2,7 @@ import { createCollection } from '@tanstack/react-db'
 import { electricCollectionOptions } from '@tanstack/electric-db-collection'
 import { EntryValidationSchema, EntryEventValidationSchema } from './validation-schemas'
 import { insertEntry, insertEntryEvent } from './server-functions'
-import { clientEnv } from '~/infra/env.client'
+import { clientEnv } from '~/infrastructure/env/env.client'
 
 /**
  * エントリーコレクション

@@ -5,7 +5,7 @@ import {
   InsertEntryEventValidationSchema,
   UuidValidationSchema,
 } from './validation-schemas'
-import { serverEnv } from '~/infra/env.server'
+import { serverEnv } from '~/infrastructure/env/env.server'
 
 const { Pool } = pg
 
