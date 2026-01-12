@@ -8,10 +8,12 @@ import {
   useWaitingEntries,
   useCalledEntries,
   useNextWaitingEntry,
+} from '~/query'
+import {
   callEntry,
   markEntryDone,
   skipEntry,
-} from '~/db'
+} from '~/usecases/entry'
 
 /**
  * 呼び出し端末画面

@@ -8,6 +8,17 @@ export const UuidSchema = z.uuid()
 export type Uuid = z.infer<typeof UuidSchema>
 
 /**
+ * データベース層のイベントタイプ配列
+ * PostgreSQLのenum値に対応
+ */
+const DB_EVENT_TYPES = ['created', 'called', 'done', 'skipped', 'cancelled'] as const
+
+/**
+ * イベント実行者の種類配列
+ */
+const EVENT_ACTORS = ['staff', 'system', 'user'] as const
+
+/**
  * データベース層のentryテーブルスキーマ
  * PostgreSQLのテーブル構造に対応（snake_case）
  */
@@ -29,9 +40,9 @@ export type DbEntry = z.infer<typeof DbEntrySchema>
 export const DbEntryEventSchema = z.object({
   id: UuidSchema,
   entry_id: UuidSchema,
-  type: z.enum(['created', 'called', 'done', 'skipped', 'cancelled']),
+  type: z.enum(DB_EVENT_TYPES),
   created_at: z.date(),
-  actor: z.enum(['staff', 'system', 'user']),
+  actor: z.enum(EVENT_ACTORS),
   device_id: z.string().nullable(),
 })
 
@@ -58,9 +69,9 @@ export const JoinedEntryEventRowSchema = z.object({
   createdAt: z.coerce.date(),
   token: z.string().length(8),
   eventId: UuidSchema.nullable().optional(),
-  eventType: z.enum(['created', 'called', 'done', 'skipped', 'cancelled']).nullable().optional(),
+  eventType: z.enum(DB_EVENT_TYPES).nullable().optional(),
   eventCreatedAt: z.coerce.date().nullable().optional(),
-  eventActor: z.enum(['staff', 'system', 'user']).nullable().optional(),
+  eventActor: z.enum(EVENT_ACTORS).nullable().optional(),
 })
 
 export type JoinedEntryEventRow = z.infer<typeof JoinedEntryEventRowSchema>

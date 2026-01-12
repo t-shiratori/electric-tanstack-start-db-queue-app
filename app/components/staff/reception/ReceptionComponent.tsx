@@ -4,10 +4,10 @@ import { ArrowLeftIcon, UserGroupIcon } from '@heroicons/react/24/outline'
 import {
   useQueueStats,
   useWaitingEntries,
-  createEntry,
-  getNextTicketNumber,
-} from '~/db'
-import type { Uuid } from '~/db/validation-schemas'
+} from '~/query'
+import { createEntry } from '~/usecases/entry'
+import { getNextTicketNumber } from '~/usecases/queue'
+import type { Uuid } from '~/infrastructure/database/schemas'
 import { LOCAL_NETWORK_BASE_URL } from '~/infrastructure/env/env.client'
 
 /**

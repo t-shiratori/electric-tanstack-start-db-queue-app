@@ -1,4 +1,4 @@
-import { useQueueStats, useCalledEntries } from '~/db'
+import { useQueueStats, useCalledEntries } from '~/query'
 
 /**
  * 表示端末画面

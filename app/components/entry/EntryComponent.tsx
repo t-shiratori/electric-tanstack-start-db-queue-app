@@ -1,4 +1,5 @@
-import { useEntryByToken, useWaitingEntries, cancelEntry } from '~/db'
+import { useEntryByToken, useWaitingEntries } from '~/query'
+import { cancelEntry } from '~/usecases/entry'
 import {
   ClockIcon,
   BellIcon,

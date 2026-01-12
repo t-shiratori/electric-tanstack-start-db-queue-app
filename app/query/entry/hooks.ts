@@ -1,109 +1,11 @@
 import { eq, useLiveQuery } from '@tanstack/react-db'
 import { useMemo } from 'react'
 import { z } from 'zod'
-import { entriesCollection, entryEventsCollection } from './collections'
-import {
-  DB_EVENT_TYPE_TO_ENTRY_EVENT_TYPE,
-  DB_EVENT_TYPES,
-  ENTRY_EVENT_TYPE,
-  ENTRY_EVENT_TYPE_TO_STATE,
-  ENTRY_STATE,
-  EVENT_ACTORS,
-} from './const'
-import { JoinedEntryEventRow, JoinedEntryEventRowSchema, UuidValidationSchema } from './validation-schemas'
-import type {
-  DbEventType,
-  EntryCurrentState,
-  EntryEventSchema,
-  EntrySchema,
-  EntryState,
-  EntryEventType,
-  QueueStats,
-} from './types'
-
-
-/**
- * DbEventTypeをEntryEventTypeに変換
- */
-function toEntryEventType(dbEventType: DbEventType): EntryEventType {
-  return DB_EVENT_TYPE_TO_ENTRY_EVENT_TYPE[dbEventType]
-}
-
-/**
- * イベントソーシングパターンを使用してイベントから現在の状態を導出
- * 最新のイベントが優先順位に従って優先される
- */
-function deriveEntryState(events: EntryEventSchema[]): EntryState {
-  if (events.length === 0) return ENTRY_STATE.WAITING
-
-  // イベントを作成時刻でソート（新しい順）
-  const sortedEvents = [...events].sort(
-    (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
-  )
-
-  // 最新のイベントから状態を導出
-  const latestEvent = sortedEvents[0]
-  return ENTRY_EVENT_TYPE_TO_STATE[latestEvent.type]
-}
-
-/**
- * join結果からEntryCurrentStateの配列を構築するヘルパー関数
- * バリデーション済みのデータを受け取る
- */
-function buildEntryStatesFromJoinedData(
-  joinedData: JoinedEntryEventRow[]
-): EntryCurrentState[] {
-  // エントリーIDでグループ化
-  const entriesMap = new Map<
-    string,
-    {
-      entry: EntrySchema
-      events: EntryEventSchema[]
-    }
-  >()
-
-  for (const row of joinedData) {
-    if (!entriesMap.has(row.id)) {
-      entriesMap.set(row.id, {
-        entry: {
-          id: row.id,
-          ticketNumber: row.ticketNumber,
-          createdAt: row.createdAt,
-          token: row.token,
-        },
-        events: [],
-      })
-    }
-
-    // イベントが存在する場合のみ追加
-    if (row.eventId && row.eventType && row.eventActor && row.eventCreatedAt) {
-      entriesMap.get(row.id)!.events.push({
-        id: row.eventId,
-        entryId: row.id,
-        type: toEntryEventType(row.eventType),
-        createdAt: row.eventCreatedAt,
-        actor: row.eventActor,
-      })
-    }
-  }
-
-  // 各エントリーの現在の状態を計算
-  return Array.from(entriesMap.values()).map(({ entry, events }) => {
-    const state = deriveEntryState(events)
-
-    const sortedEvents = [...events].sort(
-      (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
-    )
-    const lastEvent = sortedEvents[0]
-
-    return {
-      ...entry,
-      state,
-      lastEventAt: lastEvent?.createdAt ?? entry.createdAt,
-      lastEventType: lastEvent?.type ?? ENTRY_EVENT_TYPE.CREATED,
-    }
-  })
-}
+import { entriesCollection, entryEventsCollection } from '~/infrastructure/database/collections'
+import { JoinedEntryEventRowSchema } from '~/infrastructure/database/schemas'
+import type { EntryWithState, EntryState } from '~/domain/entry'
+import { buildEntryStatesFromJoinedData } from './helpers'
+import type { QueueStats } from './types'
 
 /**
  * マテリアライズドビュー: 全エントリーとその現在の状態
@@ -114,7 +16,7 @@ function buildEntryStatesFromJoinedData(
  * - リアクティブに更新
  * - 保存されない（常に導出）
  */
-export function useEntryStates(): EntryCurrentState[] {
+export function useEntryStates(): EntryWithState[] {
   const { data: entriesWithEvents = [] } = useLiveQuery((query) =>
     query
       .from({ entry: entriesCollection })
@@ -148,7 +50,7 @@ export function useEntryStates(): EntryCurrentState[] {
  * - 特定の状態のエントリーのみ
  * - リアクティブ
  */
-export function useEntriesByState(state: EntryState): EntryCurrentState[] {
+export function useEntriesByState(state: EntryState): EntryWithState[] {
   const entryStates = useEntryStates()
   return useMemo(
     () => entryStates.filter((entry) => entry.state === state),
@@ -219,7 +121,7 @@ export function useQueueStats(): QueueStats {
  * - 必要なデータだけ取得
  * - whereでフィルタ
  */
-export function useEntryByToken(token: string): EntryCurrentState | undefined {
+export function useEntryByToken(token: string): EntryWithState | undefined {
   const { data: entriesWithEvents = [] } = useLiveQuery((query) =>
     query
       .from({ entry: entriesCollection })
@@ -253,7 +155,7 @@ export function useEntryByToken(token: string): EntryCurrentState | undefined {
  * useWaitingEntriesから派生
  * - ソート済みの最初の1件
  */
-export function useNextWaitingEntry(): EntryCurrentState | undefined {
+export function useNextWaitingEntry(): EntryWithState | undefined {
   const waiting = useWaitingEntries()
   return waiting[0]
 }
@@ -265,7 +167,7 @@ export function useNextWaitingEntry(): EntryCurrentState | undefined {
  * - waiting状態のみ
  * - 番号順ソート
  */
-export function useWaitingEntries(): EntryCurrentState[] {
+export function useWaitingEntries(): EntryWithState[] {
   const waiting = useEntriesByState('waiting')
   return useMemo(
     () => [...waiting].sort((a, b) => a.ticketNumber - b.ticketNumber),
@@ -280,7 +182,7 @@ export function useWaitingEntries(): EntryCurrentState[] {
  * - called状態のみ
  * - 最新順ソート
  */
-export function useCalledEntries(): EntryCurrentState[] {
+export function useCalledEntries(): EntryWithState[] {
   const called = useEntriesByState('called')
   return useMemo(
     () =>
