@@ -1,0 +1,27 @@
+import type { EntryRepository, CreateEntryData } from '~/domain/repositories'
+import { entriesCollection } from '../database/collections'
+
+/**
+ * ElectricSQL実装のエントリーリポジトリ
+ * TanStack DBのElectricSQLコレクションを使用
+ */
+export class ElectricEntryRepository implements EntryRepository {
+  /**
+   * エントリーを挿入する
+   * @param entry エントリーデータ
+   * @returns トランザクション完了を待つPromise
+   */
+  async insert(entry: CreateEntryData): Promise<void> {
+    const tx = entriesCollection.insert({
+      id: entry.id,
+      queue_id: entry.queue_id,
+      number: entry.number,
+      party_size: entry.party_size,
+      public_token: entry.public_token,
+      created_at: entry.created_at,
+    })
+
+    // ElectricSQLのトランザクションが完了するまで待機
+    await tx.isPersisted.promise
+  }
+}

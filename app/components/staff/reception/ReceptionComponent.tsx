@@ -9,6 +9,7 @@ import { createEntry } from '~/usecases/entry'
 import { getNextTicketNumber } from '~/usecases/queue'
 import type { Uuid } from '~/infrastructure/database/schemas'
 import { LOCAL_NETWORK_BASE_URL } from '~/infrastructure/env/env.client'
+import { getEntryRepository, getEntryEventRepository } from '~/infrastructure/repositories'
 
 /**
  * 受付端末画面
@@ -46,6 +47,8 @@ export default function ReceptionComponent() {
 
       // エントリーを作成
       const result = await createEntry(
+        getEntryRepository(),
+        getEntryEventRepository(),
         QUEUE_ID,
         nextNumberResult.number,
         partySize

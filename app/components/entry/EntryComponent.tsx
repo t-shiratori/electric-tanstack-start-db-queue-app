@@ -7,6 +7,7 @@ import {
   ForwardIcon,
   XCircleIcon,
 } from '@heroicons/react/24/outline'
+import { getEntryEventRepository } from '~/infrastructure/repositories'
 
 /**
  * EntryComponentのProps
@@ -49,7 +50,7 @@ export default function EntryComponent({ token }: EntryComponentProps) {
       return
     }
 
-    const result = await cancelEntry(entry.id, 'user')
+    const result = await cancelEntry(getEntryEventRepository(), entry.id, 'user')
     if (!result.success) {
       alert(`キャンセルエラー: ${result.error}`)
     }

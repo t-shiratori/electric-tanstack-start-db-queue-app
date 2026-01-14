@@ -14,6 +14,7 @@ import {
   markEntryDone,
   skipEntry,
 } from '~/usecases/entry'
+import { getEntryEventRepository } from '~/infrastructure/repositories'
 
 /**
  * 呼び出し端末画面
@@ -36,7 +37,7 @@ export default function CallComponent() {
       return
     }
 
-    const result = await callEntry(nextEntry.id)
+    const result = await callEntry(getEntryEventRepository(), nextEntry.id)
     if (!result.success) {
       alert(`呼び出しエラー: ${result.error}`)
     }
@@ -46,7 +47,7 @@ export default function CallComponent() {
    * エントリーを完了としてマーク
    */
   const handleMarkDone = async (entryId: string) => {
-    const result = await markEntryDone(entryId)
+    const result = await markEntryDone(getEntryEventRepository(), entryId)
     if (!result.success) {
       alert(`完了処理エラー: ${result.error}`)
     }
@@ -60,7 +61,7 @@ export default function CallComponent() {
       return
     }
 
-    const result = await skipEntry(entryId)
+    const result = await skipEntry(getEntryEventRepository(), entryId)
     if (!result.success) {
       alert(`スキップエラー: ${result.error}`)
     }
