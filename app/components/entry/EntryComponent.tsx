@@ -84,35 +84,41 @@ export default function EntryComponent({ token }: EntryComponentProps) {
           Icon: ClockIcon,
           title: '待機中',
           color: 'yellow',
-          message: 'お呼びするまでお待ちください',
+          message: <>お呼びするまでお待ちください</>,
         }
       case 'called':
         return {
           Icon: BellIcon,
           title: '呼び出し中',
           color: 'blue',
-          message: 'カウンターにお越しください！',
+          message: <>カウンターにお越しください</>,
         }
       case 'done':
         return {
           Icon: CheckCircleIcon,
           title: '完了',
           color: 'green',
-          message: 'ご利用ありがとうございました',
+          message: <>ご利用ありがとうございました</>,
         }
       case 'skipped':
         return {
           Icon: ForwardIcon,
           title: 'スキップ',
           color: 'orange',
-          message: '次回お越しください',
+          message: <>次回お越しください</>,
         }
       case 'cancelled':
         return {
           Icon: XCircleIcon,
           title: 'キャンセル済み',
           color: 'red',
-          message: 'このエントリーはキャンセルされました',
+          message: (
+            <>
+              この受付は
+              <br />
+              キャンセルされました
+            </>
+          ),
         }
     }
   }
@@ -152,14 +158,14 @@ export default function EntryComponent({ token }: EntryComponentProps) {
 
           {/* 整理券番号 */}
           <div className="p-10 text-center bg-white">
-            <div className="text-sm text-gray-600 mb-3 font-medium">
+            <div className="text-base text-gray-600 mb-3 font-medium">
               整理券番号
             </div>
             <div className="text-9xl font-semibold text-gray-900 mb-6">
               {entry.ticketNumber}
             </div>
 
-            <div className="text-lg text-gray-700 mb-8 font-light">
+            <div className="text-lg text-gray-700 mb-8 font-medium">
               {status.message}
             </div>
 
@@ -181,10 +187,7 @@ export default function EntryComponent({ token }: EntryComponentProps) {
             {/* 呼び出し中の場合は強調表示 */}
             {entry.state === 'called' && (
               <div className="bg-gray-900 border-2 border-gray-900 rounded-lg p-8 mb-6">
-                <div className="text-2xl font-medium text-white mb-3">
-                  カウンターへどうぞ
-                </div>
-                <div className="text-sm text-gray-300 font-medium">
+                <div className="text-lg text-gray-300 font-medium">
                   呼び出し時刻:{' '}
                   {new Date(entry.lastEventAt).toLocaleTimeString('ja-JP', {
                     hour: '2-digit',
