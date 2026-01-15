@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useEntryByToken, useWaitingEntries } from '~/query'
 import { cancelEntry } from '~/usecases/entry'
 import {
@@ -31,53 +32,26 @@ export default function EntryComponent({ token }: EntryComponentProps) {
   /**
    * 待ち行列での順位を計算
    */
-  const getQueuePosition = (): number | null => {
+  const queuePosition = useMemo((): number | null => {
     if (!entry || entry.state !== 'waiting') {
       return null
     }
 
     const position = waitingEntries.findIndex((e) => e.id === entry.id)
     return position >= 0 ? position + 1 : null
-  }
-
-  /**
-   * エントリーをキャンセル
-   */
-  const handleCancel = async () => {
-    if (!entry) return
-
-    if (!confirm('整理券をキャンセルしますか？')) {
-      return
-    }
-
-    const result = await cancelEntry(getEntryEventRepository(), entry.id, 'user')
-    if (!result.success) {
-      alert(`キャンセルエラー: ${result.error}`)
-    }
-  }
-
-  const queuePosition = getQueuePosition()
-
-  // エントリーが見つからない場合
-  if (!entry) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-        <div className="max-w-md w-full text-center">
-          <div className="text-7xl mb-6 text-gray-300">—</div>
-          <h1 className="text-3xl font-semibold text-gray-900 mb-3">
-            エントリーが見つかりません
-          </h1>
-          <p className="text-gray-600 mb-8 font-light">
-            トークン「{token}」に対応するエントリーが存在しないか、既に削除されています。
-          </p>
-          <div className="text-sm text-gray-500 font-mono">{token}</div>
-        </div>
-      </div>
-    )
-  }
+  }, [entry, waitingEntries])
 
   // 状態に応じた表示
-  const getStatusDisplay = () => {
+  const status = useMemo(() => {
+    if (!entry) {
+      return {
+        Icon: XCircleIcon,
+        title: '',
+        color: 'gray',
+        message: <></>,
+      }
+    }
+
     switch (entry.state) {
       case 'waiting':
         return {
@@ -121,12 +95,13 @@ export default function EntryComponent({ token }: EntryComponentProps) {
           ),
         }
     }
-  }
+  }, [entry])
 
-  const status = getStatusDisplay()
   const StatusIcon = status.Icon
 
-  const getStatusColor = () => {
+  const statusColor = useMemo(() => {
+    if (!entry) return 'bg-gray-200 text-gray-900 border-2 border-gray-300'
+
     switch (entry.state) {
       case 'waiting':
         return 'bg-gray-200 text-gray-900 border-2 border-gray-300'
@@ -139,6 +114,40 @@ export default function EntryComponent({ token }: EntryComponentProps) {
       case 'cancelled':
         return 'bg-gray-200 text-gray-900 border-2 border-gray-300'
     }
+  }, [entry])
+
+  /**
+   * エントリーをキャンセル
+   */
+  const handleCancel = async () => {
+    if (!entry) return
+
+    if (!confirm('整理券をキャンセルしますか？')) {
+      return
+    }
+
+    const result = await cancelEntry(getEntryEventRepository(), entry.id, 'user')
+    if (!result.success) {
+      alert(`キャンセルエラー: ${result.error}`)
+    }
+  }
+
+  // エントリーが見つからない場合
+  if (!entry) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+        <div className="max-w-md w-full text-center">
+          <div className="text-7xl mb-6 text-gray-300">—</div>
+          <h1 className="text-3xl font-semibold text-gray-900 mb-3">
+            エントリーが見つかりません
+          </h1>
+          <p className="text-gray-600 mb-8 font-light">
+            トークン「{token}」に対応するエントリーが存在しないか、既に削除されています。
+          </p>
+          <div className="text-sm text-gray-500 font-mono">{token}</div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -147,7 +156,7 @@ export default function EntryComponent({ token }: EntryComponentProps) {
         {/* メインカード */}
         <div className="bg-white border-2 border-gray-200 rounded-xl overflow-hidden mb-6">
           {/* ヘッダー */}
-          <div className={`${getStatusColor()} p-10 text-center`}>
+          <div className={`${statusColor} p-10 text-center`}>
             <div className="flex justify-center mb-3">
               <StatusIcon className="w-16 h-16" />
             </div>

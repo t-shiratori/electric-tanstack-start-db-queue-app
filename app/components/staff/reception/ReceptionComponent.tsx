@@ -62,6 +62,9 @@ export default function ReceptionComponent() {
       // QRコードを生成
       // ローカルネットワークからアクセス可能なURLを生成
       const entryUrl = `${LOCAL_NETWORK_BASE_URL}/entry/${result.token}`
+
+      console.log('Entry URL:', entryUrl)
+      
       const qrCodeUrl = await QRCode.toDataURL(entryUrl, {
         width: 300,
         margin: 2,
