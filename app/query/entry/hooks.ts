@@ -1,11 +1,11 @@
-import { eq, useLiveQuery } from '@tanstack/react-db'
-import { useMemo } from 'react'
-import { z } from 'zod'
-import { entriesCollection, entryEventsCollection } from '~/infrastructure/database/collections'
-import { JoinedEntryEventRowSchema } from '~/infrastructure/database/schemas'
-import type { EntryWithState, EntryState } from '~/domain/entry'
-import { buildEntryStatesFromJoinedData } from './helpers'
-import type { QueueStats } from './types'
+import { eq, useLiveQuery } from '@tanstack/react-db';
+import { useMemo } from 'react';
+import { z } from 'zod';
+import type { EntryState, EntryWithState } from '~/domain/entry';
+import { entriesCollection, entryEventsCollection } from '~/infrastructure/database/collections';
+import { JoinedEntryEventRowSchema } from '~/infrastructure/database/schemas';
+import { buildEntryStatesFromJoinedData } from './helpers';
+import type { QueueStats } from './types';
 
 /**
  * マテリアライズドビュー: 全エントリーとその現在の状態
@@ -20,9 +20,7 @@ export function useEntryStates(): EntryWithState[] {
   const { data: entriesWithEvents = [] } = useLiveQuery((query) =>
     query
       .from({ entry: entriesCollection })
-      .leftJoin({ event: entryEventsCollection }, ({ entry, event }) =>
-        eq(entry.id, event.entry_id)
-      )
+      .leftJoin({ event: entryEventsCollection }, ({ entry, event }) => eq(entry.id, event.entry_id))
       .select(({ entry, event }) => ({
         id: entry.id,
         ticketNumber: entry.number,
@@ -33,14 +31,14 @@ export function useEntryStates(): EntryWithState[] {
         eventCreatedAt: event?.created_at,
         eventActor: event?.actor,
       }))
-      .orderBy(({ entry }) => entry.number, 'asc')
-  )
+      .orderBy(({ entry }) => entry.number, 'asc'),
+  );
 
   return useMemo(() => {
     // Zodスキーマでバリデーション
-    const validatedData = z.array(JoinedEntryEventRowSchema).parse(entriesWithEvents)
-    return buildEntryStatesFromJoinedData(validatedData)
-  }, [entriesWithEvents])
+    const validatedData = z.array(JoinedEntryEventRowSchema).parse(entriesWithEvents);
+    return buildEntryStatesFromJoinedData(validatedData);
+  }, [entriesWithEvents]);
 }
 
 /**
@@ -51,11 +49,8 @@ export function useEntryStates(): EntryWithState[] {
  * - リアクティブ
  */
 export function useEntriesByState(state: EntryState): EntryWithState[] {
-  const entryStates = useEntryStates()
-  return useMemo(
-    () => entryStates.filter((entry) => entry.state === state),
-    [entryStates, state]
-  )
+  const entryStates = useEntryStates();
+  return useMemo(() => entryStates.filter((entry) => entry.state === state), [entryStates, state]);
 }
 
 /**
@@ -67,7 +62,7 @@ export function useEntriesByState(state: EntryState): EntryWithState[] {
  * - リアクティブ
  */
 export function useQueueStats(): QueueStats {
-  const entryStates = useEntryStates()
+  const entryStates = useEntryStates();
 
   return useMemo(() => {
     const stats = {
@@ -77,41 +72,40 @@ export function useQueueStats(): QueueStats {
       totalCancelled: 0,
       totalSkipped: 0,
       averageWaitTime: 0,
-    }
+    };
 
-    let totalWaitTimeMs = 0
-    let completedCount = 0
+    let totalWaitTimeMs = 0;
+    let completedCount = 0;
 
     for (const entry of entryStates) {
       switch (entry.state) {
         case 'waiting':
-          stats.totalWaiting++
-          break
+          stats.totalWaiting++;
+          break;
         case 'called':
-          stats.totalCalled++
-          break
+          stats.totalCalled++;
+          break;
         case 'done':
-          stats.totalDone++
-          completedCount++
-          totalWaitTimeMs +=
-            entry.lastEventAt.getTime() - entry.createdAt.getTime()
-          break
+          stats.totalDone++;
+          completedCount++;
+          totalWaitTimeMs += entry.lastEventAt.getTime() - entry.createdAt.getTime();
+          break;
         case 'cancelled':
-          stats.totalCancelled++
-          break
+          stats.totalCancelled++;
+          break;
         case 'skipped':
-          stats.totalSkipped++
-          break
+          stats.totalSkipped++;
+          break;
       }
     }
 
     // 平均待ち時間を分単位で計算
     if (completedCount > 0) {
-      stats.averageWaitTime = totalWaitTimeMs / completedCount / 1000 / 60
+      stats.averageWaitTime = totalWaitTimeMs / completedCount / 1000 / 60;
     }
 
-    return stats
-  }, [entryStates])
+    return stats;
+  }, [entryStates]);
 }
 
 /**
@@ -125,9 +119,7 @@ export function useEntryByToken(token: string): EntryWithState | undefined {
   const { data: entriesWithEvents = [] } = useLiveQuery((query) =>
     query
       .from({ entry: entriesCollection })
-      .leftJoin({ event: entryEventsCollection }, ({ entry, event }) =>
-        eq(entry.id, event.entry_id)
-      )
+      .leftJoin({ event: entryEventsCollection }, ({ entry, event }) => eq(entry.id, event.entry_id))
       .where(({ entry }) => eq(entry.public_token, token))
       .select(({ entry, event }) => ({
         id: entry.id,
@@ -138,15 +130,15 @@ export function useEntryByToken(token: string): EntryWithState | undefined {
         eventType: event?.type,
         eventCreatedAt: event?.created_at,
         eventActor: event?.actor,
-      }))
-  )
+      })),
+  );
 
   return useMemo(() => {
     // Zodスキーマでバリデーション
-    const validatedData = z.array(JoinedEntryEventRowSchema).parse(entriesWithEvents)
-    const states = buildEntryStatesFromJoinedData(validatedData)
-    return states[0]
-  }, [entriesWithEvents])
+    const validatedData = z.array(JoinedEntryEventRowSchema).parse(entriesWithEvents);
+    const states = buildEntryStatesFromJoinedData(validatedData);
+    return states[0];
+  }, [entriesWithEvents]);
 }
 
 /**
@@ -156,8 +148,8 @@ export function useEntryByToken(token: string): EntryWithState | undefined {
  * - ソート済みの最初の1件
  */
 export function useNextWaitingEntry(): EntryWithState | undefined {
-  const waiting = useWaitingEntries()
-  return waiting[0]
+  const waiting = useWaitingEntries();
+  return waiting[0];
 }
 
 /**
@@ -168,11 +160,8 @@ export function useNextWaitingEntry(): EntryWithState | undefined {
  * - 番号順ソート
  */
 export function useWaitingEntries(): EntryWithState[] {
-  const waiting = useEntriesByState('waiting')
-  return useMemo(
-    () => [...waiting].sort((a, b) => a.ticketNumber - b.ticketNumber),
-    [waiting]
-  )
+  const waiting = useEntriesByState('waiting');
+  return useMemo(() => [...waiting].sort((a, b) => a.ticketNumber - b.ticketNumber), [waiting]);
 }
 
 /**
@@ -183,12 +172,6 @@ export function useWaitingEntries(): EntryWithState[] {
  * - 最新順ソート
  */
 export function useCalledEntries(): EntryWithState[] {
-  const called = useEntriesByState('called')
-  return useMemo(
-    () =>
-      [...called].sort(
-        (a, b) => b.lastEventAt.getTime() - a.lastEventAt.getTime()
-      ),
-    [called]
-  )
+  const called = useEntriesByState('called');
+  return useMemo(() => [...called].sort((a, b) => b.lastEventAt.getTime() - a.lastEventAt.getTime()), [called]);
 }

@@ -2,4 +2,4 @@
  * 待ち行列関連ユースケース
  */
 
-export { getNextTicketNumber } from './get-next-ticket-number'
+export { getNextTicketNumber } from './get-next-ticket-number';

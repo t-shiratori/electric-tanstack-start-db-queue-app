@@ -1,5 +1,5 @@
-import type { EntryRepository, CreateEntryData } from '~/domain/repositories'
-import { entriesCollection } from '../database/collections'
+import type { CreateEntryData, EntryRepository } from '~/domain/repositories';
+import { entriesCollection } from '../database/collections';
 
 /**
  * ElectricSQL実装のエントリーリポジトリを作成
@@ -22,10 +22,10 @@ export function createElectricEntryRepository(): EntryRepository {
         party_size: entry.party_size,
         public_token: entry.public_token,
         created_at: entry.created_at,
-      })
+      });
 
       // ElectricSQLのトランザクションが完了するまで待機
-      await tx.isPersisted.promise
-    }
-  }
+      await tx.isPersisted.promise;
+    },
+  };
 }

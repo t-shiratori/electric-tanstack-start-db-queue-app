@@ -1,5 +1,5 @@
-import type { Entry } from '~/domain/entry'
-import type { DbEntry } from '../schemas'
+import type { Entry } from '~/domain/entry';
+import type { DbEntry } from '../schemas';
 
 /**
  * DB層からドメイン層への変換
@@ -14,7 +14,7 @@ export function toDomainEntry(dbEntry: DbEntry): Entry {
     ticketNumber: dbEntry.number,
     createdAt: dbEntry.created_at,
     token: dbEntry.public_token,
-  }
+  };
 }
 
 /**
@@ -26,11 +26,7 @@ export function toDomainEntry(dbEntry: DbEntry): Entry {
  * @param partySize パーティーサイズ（人数）
  * @returns データベースのentryレコード
  */
-export function toDbEntry(
-  entry: Entry,
-  queueId: string,
-  partySize: number = 1
-): DbEntry {
+export function toDbEntry(entry: Entry, queueId: string, partySize: number = 1): DbEntry {
   return {
     id: entry.id,
     queue_id: queueId,
@@ -38,5 +34,5 @@ export function toDbEntry(
     party_size: partySize,
     public_token: entry.token,
     created_at: entry.createdAt,
-  }
+  };
 }

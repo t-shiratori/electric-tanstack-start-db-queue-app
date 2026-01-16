@@ -3,12 +3,12 @@
  * リポジトリに渡すエントリー情報
  */
 export interface CreateEntryData {
-  id: string
-  queue_id: string
-  number: number
-  party_size: number
-  public_token: string
-  created_at: Date
+  id: string;
+  queue_id: string;
+  number: number;
+  party_size: number;
+  public_token: string;
+  created_at: Date;
 }
 
 /**
@@ -21,5 +21,5 @@ export interface EntryRepository {
    * @param entry エントリーデータ
    * @returns トランザクション完了を待つPromise
    */
-  insert(entry: CreateEntryData): Promise<void>
+  insert(entry: CreateEntryData): Promise<void>;
 }

@@ -1,21 +1,15 @@
-import { useMemo } from 'react'
-import { useEntryByToken, useWaitingEntries } from '~/query'
-import { cancelEntry } from '~/usecases/entry'
-import {
-  ClockIcon,
-  BellIcon,
-  CheckCircleIcon,
-  ForwardIcon,
-  XCircleIcon,
-} from '@heroicons/react/24/outline'
-import { getEntryEventRepository } from '~/infrastructure/repositories'
+import { BellIcon, CheckCircleIcon, ClockIcon, ForwardIcon, XCircleIcon } from '@heroicons/react/24/outline';
+import { useMemo } from 'react';
+import { getEntryEventRepository } from '~/infrastructure/repositories';
+import { useEntryByToken, useWaitingEntries } from '~/query';
+import { cancelEntry } from '~/usecases/entry';
 
 /**
  * EntryComponentのProps
  * @property token アクセストークン（URLパラメータから取得）
  */
 interface EntryComponentProps {
-  token: string
+  token: string;
 }
 
 /**
@@ -26,20 +20,20 @@ interface EntryComponentProps {
  * - リアルタイム更新
  */
 export default function EntryComponent({ token }: EntryComponentProps) {
-  const entry = useEntryByToken(token)
-  const waitingEntries = useWaitingEntries()
+  const entry = useEntryByToken(token);
+  const waitingEntries = useWaitingEntries();
 
   /**
    * 待ち行列での順位を計算
    */
   const queuePosition = useMemo((): number | null => {
     if (!entry || entry.state !== 'waiting') {
-      return null
+      return null;
     }
 
-    const position = waitingEntries.findIndex((e) => e.id === entry.id)
-    return position >= 0 ? position + 1 : null
-  }, [entry, waitingEntries])
+    const position = waitingEntries.findIndex((e) => e.id === entry.id);
+    return position >= 0 ? position + 1 : null;
+  }, [entry, waitingEntries]);
 
   // 状態に応じた表示
   const status = useMemo(() => {
@@ -49,7 +43,7 @@ export default function EntryComponent({ token }: EntryComponentProps) {
         title: '',
         color: 'gray',
         message: <></>,
-      }
+      };
     }
 
     switch (entry.state) {
@@ -59,28 +53,28 @@ export default function EntryComponent({ token }: EntryComponentProps) {
           title: '待機中',
           color: 'yellow',
           message: <>お呼びするまでお待ちください</>,
-        }
+        };
       case 'called':
         return {
           Icon: BellIcon,
           title: '呼び出し中',
           color: 'blue',
           message: <>カウンターにお越しください</>,
-        }
+        };
       case 'done':
         return {
           Icon: CheckCircleIcon,
           title: '完了',
           color: 'green',
           message: <>ご利用ありがとうございました</>,
-        }
+        };
       case 'skipped':
         return {
           Icon: ForwardIcon,
           title: 'スキップ',
           color: 'orange',
           message: <>次回お越しください</>,
-        }
+        };
       case 'cancelled':
         return {
           Icon: XCircleIcon,
@@ -93,44 +87,44 @@ export default function EntryComponent({ token }: EntryComponentProps) {
               キャンセルされました
             </>
           ),
-        }
+        };
     }
-  }, [entry])
+  }, [entry]);
 
-  const StatusIcon = status.Icon
+  const StatusIcon = status.Icon;
 
   const statusColor = useMemo(() => {
-    if (!entry) return 'bg-gray-200 text-gray-900 border-2 border-gray-300'
+    if (!entry) return 'bg-gray-200 text-gray-900 border-2 border-gray-300';
 
     switch (entry.state) {
       case 'waiting':
-        return 'bg-gray-200 text-gray-900 border-2 border-gray-300'
+        return 'bg-gray-200 text-gray-900 border-2 border-gray-300';
       case 'called':
-        return 'bg-gray-900 text-white border-2 border-gray-900'
+        return 'bg-gray-900 text-white border-2 border-gray-900';
       case 'done':
-        return 'bg-gray-200 text-gray-900 border-2 border-gray-300'
+        return 'bg-gray-200 text-gray-900 border-2 border-gray-300';
       case 'skipped':
-        return 'bg-gray-200 text-gray-900 border-2 border-gray-300'
+        return 'bg-gray-200 text-gray-900 border-2 border-gray-300';
       case 'cancelled':
-        return 'bg-gray-200 text-gray-900 border-2 border-gray-300'
+        return 'bg-gray-200 text-gray-900 border-2 border-gray-300';
     }
-  }, [entry])
+  }, [entry]);
 
   /**
    * エントリーをキャンセル
    */
   const handleCancel = async () => {
-    if (!entry) return
+    if (!entry) return;
 
     if (!confirm('整理券をキャンセルしますか？')) {
-      return
+      return;
     }
 
-    const result = await cancelEntry(getEntryEventRepository(), entry.id, 'user')
+    const result = await cancelEntry(getEntryEventRepository(), entry.id, 'user');
     if (!result.success) {
-      alert(`キャンセルエラー: ${result.error}`)
+      alert(`キャンセルエラー: ${result.error}`);
     }
-  }
+  };
 
   // エントリーが見つからない場合
   if (!entry) {
@@ -138,16 +132,15 @@ export default function EntryComponent({ token }: EntryComponentProps) {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
         <div className="max-w-md w-full text-center">
           <div className="text-7xl mb-6 text-gray-300">—</div>
-          <h1 className="text-3xl font-semibold text-gray-900 mb-3">
-            エントリーが見つかりません
-          </h1>
+          <h1 className="text-3xl font-semibold text-gray-900 mb-3">エントリーが見つかりません</h1>
           <p className="text-gray-600 mb-8 font-light">
-            トークン「{token}」に対応するエントリーが存在しないか、既に削除されています。
+            トークン「{token}
+            」に対応するエントリーが存在しないか、既に削除されています。
           </p>
           <div className="text-sm text-gray-500 font-mono">{token}</div>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -160,36 +153,22 @@ export default function EntryComponent({ token }: EntryComponentProps) {
             <div className="flex justify-center mb-3">
               <StatusIcon className="w-16 h-16" />
             </div>
-            <div className="text-xl font-medium tracking-wide">
-              {status.title}
-            </div>
+            <div className="text-xl font-medium tracking-wide">{status.title}</div>
           </div>
 
           {/* 整理券番号 */}
           <div className="p-10 text-center bg-white">
-            <div className="text-base text-gray-600 mb-3 font-medium">
-              整理券番号
-            </div>
-            <div className="text-9xl font-semibold text-gray-900 mb-6">
-              {entry.ticketNumber}
-            </div>
+            <div className="text-base text-gray-600 mb-3 font-medium">整理券番号</div>
+            <div className="text-9xl font-semibold text-gray-900 mb-6">{entry.ticketNumber}</div>
 
-            <div className="text-lg text-gray-700 mb-8 font-medium">
-              {status.message}
-            </div>
+            <div className="text-lg text-gray-700 mb-8 font-medium">{status.message}</div>
 
             {/* 待機中の場合は順位を表示 */}
             {entry.state === 'waiting' && queuePosition !== null && (
               <div className="bg-gray-50 border-2 border-gray-200 rounded-lg p-8 mb-6">
-                <div className="text-sm text-gray-600 mb-2 font-medium">
-                  あなたの前に待っている人
-                </div>
-                <div className="text-6xl font-semibold text-gray-900 mb-2">
-                  {queuePosition - 1}
-                </div>
-                <div className="text-sm text-gray-600 font-medium">
-                  現在 {queuePosition} 番目
-                </div>
+                <div className="text-sm text-gray-600 mb-2 font-medium">あなたの前に待っている人</div>
+                <div className="text-6xl font-semibold text-gray-900 mb-2">{queuePosition - 1}</div>
+                <div className="text-sm text-gray-600 font-medium">現在 {queuePosition} 番目</div>
               </div>
             )}
 
@@ -208,12 +187,8 @@ export default function EntryComponent({ token }: EntryComponentProps) {
 
             {/* トークン情報 */}
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-              <div className="text-xs text-gray-600 mb-2 font-medium">
-                アクセストークン
-              </div>
-              <div className="font-mono text-sm text-gray-700">
-                {entry.token}
-              </div>
+              <div className="text-xs text-gray-600 mb-2 font-medium">アクセストークン</div>
+              <div className="font-mono text-sm text-gray-700">{entry.token}</div>
             </div>
           </div>
 
@@ -221,6 +196,7 @@ export default function EntryComponent({ token }: EntryComponentProps) {
           {(entry.state === 'waiting' || entry.state === 'called') && (
             <div className="p-6 bg-gray-50 border-t-2 border-gray-200">
               <button
+                type="button"
                 onClick={handleCancel}
                 className="w-full bg-white border-2 border-gray-300 text-gray-700 font-medium py-4 px-6 rounded-full hover:border-gray-400 transition-colors"
               >
@@ -232,9 +208,7 @@ export default function EntryComponent({ token }: EntryComponentProps) {
 
         {/* 詳細情報 */}
         <div className="bg-white border-2 border-gray-200 rounded-xl p-8">
-          <h2 className="text-lg font-semibold text-gray-900 mb-6">
-            詳細情報
-          </h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-6">詳細情報</h2>
           <div className="space-y-4 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-600 font-medium">受付日時</span>
@@ -265,9 +239,7 @@ export default function EntryComponent({ token }: EntryComponentProps) {
             {entry.state === 'waiting' && waitingEntries.length > 0 && (
               <div className="flex justify-between">
                 <span className="text-gray-600 font-medium">待機人数</span>
-                <span className="text-gray-900 font-medium">
-                  {waitingEntries.length}人
-                </span>
+                <span className="text-gray-900 font-medium">{waitingEntries.length}人</span>
               </div>
             )}
           </div>
@@ -279,5 +251,5 @@ export default function EntryComponent({ token }: EntryComponentProps) {
         </div>
       </div>
     </div>
-  )
+  );
 }

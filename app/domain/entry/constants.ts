@@ -1,4 +1,4 @@
-import type { EntryState, EventActor } from './types'
+import type { EntryState, EventActor } from './types';
 
 /**
  * エントリーの状態定数
@@ -14,7 +14,7 @@ export const ENTRY_STATE = {
   DONE: 'done',
   SKIPPED: 'skipped',
   CANCELLED: 'cancelled',
-} as const satisfies Record<string, EntryState>
+} as const satisfies Record<string, EntryState>;
 
 /**
  * イベント実行者の種類定数
@@ -26,4 +26,4 @@ export const EVENT_ACTOR = {
   STAFF: 'staff',
   SYSTEM: 'system',
   USER: 'user',
-} as const satisfies Record<string, EventActor>
+} as const satisfies Record<string, EventActor>;

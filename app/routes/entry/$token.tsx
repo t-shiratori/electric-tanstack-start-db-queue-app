@@ -1,9 +1,9 @@
-import { createFileRoute, ClientOnly } from '@tanstack/react-router'
-import EntryComponent from '~/components/entry/EntryComponent'
+import { ClientOnly, createFileRoute } from '@tanstack/react-router';
+import EntryComponent from '~/components/entry/EntryComponent';
 
 function EntryPage() {
-  const { token } = Route.useParams()
-  return <EntryComponent token={token} />
+  const { token } = Route.useParams();
+  return <EntryComponent token={token} />;
 }
 
 export const Route = createFileRoute('/entry/$token')({
@@ -18,4 +18,4 @@ export const Route = createFileRoute('/entry/$token')({
       <EntryPage />
     </ClientOnly>
   ),
-})
+});

@@ -1,7 +1,7 @@
-import type { EventActor } from '~/domain/entry'
-import type { EntryEventRepository } from '~/domain/repositories'
-import { addEntryEvent } from './add-entry-event'
-import type { UseCaseResult } from '../types'
+import type { EventActor } from '~/domain/entry';
+import type { EntryEventRepository } from '~/domain/repositories';
+import type { UseCaseResult } from '../types';
+import { addEntryEvent } from './add-entry-event';
 
 /**
  * エントリーをキャンセルするユースケース
@@ -15,7 +15,7 @@ import type { UseCaseResult } from '../types'
 export async function cancelEntry(
   repository: EntryEventRepository,
   entryId: string,
-  actor: Extract<EventActor, 'staff' | 'user'> = 'user'
+  actor: Extract<EventActor, 'staff' | 'user'> = 'user',
 ): Promise<UseCaseResult> {
-  return addEntryEvent(repository, entryId, 'EntryCancelled', actor)
+  return addEntryEvent(repository, entryId, 'EntryCancelled', actor);
 }

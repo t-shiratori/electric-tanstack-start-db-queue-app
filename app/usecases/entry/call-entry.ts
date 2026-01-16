@@ -1,6 +1,6 @@
-import type { EntryEventRepository } from '~/domain/repositories'
-import { addEntryEvent } from './add-entry-event'
-import type { UseCaseResult } from '../types'
+import type { EntryEventRepository } from '~/domain/repositories';
+import type { UseCaseResult } from '../types';
+import { addEntryEvent } from './add-entry-event';
 
 /**
  * エントリーを呼び出すユースケース
@@ -14,7 +14,7 @@ import type { UseCaseResult } from '../types'
 export async function callEntry(
   repository: EntryEventRepository,
   entryId: string,
-  deviceId?: string
+  deviceId?: string,
 ): Promise<UseCaseResult> {
-  return addEntryEvent(repository, entryId, 'EntryCalled', 'staff', deviceId)
+  return addEntryEvent(repository, entryId, 'EntryCalled', 'staff', deviceId);
 }

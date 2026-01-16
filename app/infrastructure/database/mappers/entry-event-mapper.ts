@@ -1,6 +1,6 @@
-import type { EntryEvent } from '~/domain/entry'
-import { toDbEventType, toDomainEventType } from '~/domain/entry'
-import type { DbEntryEvent } from '../schemas'
+import type { EntryEvent } from '~/domain/entry';
+import { toDbEventType, toDomainEventType } from '~/domain/entry';
+import type { DbEntryEvent } from '../schemas';
 
 /**
  * DB層からドメイン層への変換
@@ -17,7 +17,7 @@ export function toDomainEntryEvent(dbEvent: DbEntryEvent): EntryEvent {
     type: toDomainEventType(dbEvent.type),
     createdAt: dbEvent.created_at,
     actor: dbEvent.actor,
-  }
+  };
 }
 
 /**
@@ -29,10 +29,7 @@ export function toDomainEntryEvent(dbEvent: DbEntryEvent): EntryEvent {
  * @param deviceId デバイスID（オプション）
  * @returns データベースのentry_eventレコード
  */
-export function toDbEntryEvent(
-  event: EntryEvent,
-  deviceId?: string | null
-): DbEntryEvent {
+export function toDbEntryEvent(event: EntryEvent, deviceId?: string | null): DbEntryEvent {
   return {
     id: event.id,
     entry_id: event.entryId,
@@ -40,5 +37,5 @@ export function toDbEntryEvent(
     created_at: event.createdAt,
     actor: event.actor,
     device_id: deviceId ?? null,
-  }
+  };
 }

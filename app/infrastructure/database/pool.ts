@@ -1,7 +1,7 @@
-import pg from 'pg'
-import { serverEnv } from '~/infrastructure/env/env.server'
+import pg from 'pg';
+import { serverEnv } from '~/infrastructure/env/env.server';
 
-const { Pool } = pg
+const { Pool } = pg;
 
 /**
  * PostgreSQL接続プール
@@ -9,4 +9,4 @@ const { Pool } = pg
  */
 export const pool = new Pool({
   connectionString: serverEnv.DATABASE_URL,
-})
+});

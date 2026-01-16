@@ -1,4 +1,4 @@
-import type { EntryEventType } from './types'
+import type { EntryEventType } from './types';
 
 /**
  * アプリケーション層のイベントタイプ定数（ドメインイベント）
@@ -14,13 +14,13 @@ export const ENTRY_EVENT_TYPE = {
   DONE: 'EntryDone',
   SKIPPED: 'EntrySkipped',
   CANCELLED: 'EntryCancelled',
-} as const satisfies Record<string, EntryEventType>
+} as const satisfies Record<string, EntryEventType>;
 
 /**
  * データベース層のイベントタイプ
  * PostgreSQLのenum値に対応
  */
-export type DbEventType = 'created' | 'called' | 'done' | 'skipped' | 'cancelled'
+export type DbEventType = 'created' | 'called' | 'done' | 'skipped' | 'cancelled';
 
 /**
  * イベントタイプをDBタイプに変換
@@ -34,8 +34,8 @@ export function toDbEventType(eventType: EntryEventType): DbEventType {
     [ENTRY_EVENT_TYPE.DONE]: 'done',
     [ENTRY_EVENT_TYPE.SKIPPED]: 'skipped',
     [ENTRY_EVENT_TYPE.CANCELLED]: 'cancelled',
-  }
-  return mapping[eventType]
+  };
+  return mapping[eventType];
 }
 
 /**
@@ -45,11 +45,11 @@ export function toDbEventType(eventType: EntryEventType): DbEventType {
  */
 export function toDomainEventType(dbType: DbEventType): EntryEventType {
   const mapping: Record<DbEventType, EntryEventType> = {
-    'created': ENTRY_EVENT_TYPE.CREATED,
-    'called': ENTRY_EVENT_TYPE.CALLED,
-    'done': ENTRY_EVENT_TYPE.DONE,
-    'skipped': ENTRY_EVENT_TYPE.SKIPPED,
-    'cancelled': ENTRY_EVENT_TYPE.CANCELLED,
-  }
-  return mapping[dbType]
+    created: ENTRY_EVENT_TYPE.CREATED,
+    called: ENTRY_EVENT_TYPE.CALLED,
+    done: ENTRY_EVENT_TYPE.DONE,
+    skipped: ENTRY_EVENT_TYPE.SKIPPED,
+    cancelled: ENTRY_EVENT_TYPE.CANCELLED,
+  };
+  return mapping[dbType];
 }

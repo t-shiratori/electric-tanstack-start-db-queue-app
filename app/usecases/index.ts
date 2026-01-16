@@ -4,23 +4,21 @@
  * ドメイン層とインフラストラクチャ層を組み合わせてアプリケーション機能を提供
  */
 
-// 型定義
-export type {
-  UseCaseResult,
-  CreateEntryResult,
-  GetNextTicketNumberResult,
-} from './types'
-
 // エントリー関連ユースケース
 export {
-  createEntry,
   addEntryEvent,
   callEntry,
+  cancelEntry,
+  createEntry,
+  generateToken,
   markEntryDone,
   skipEntry,
-  cancelEntry,
-  generateToken,
-} from './entry'
-
+} from './entry';
 // 待ち行列関連ユースケース
-export { getNextTicketNumber } from './queue'
+export { getNextTicketNumber } from './queue';
+// 型定義
+export type {
+  CreateEntryResult,
+  GetNextTicketNumberResult,
+  UseCaseResult,
+} from './types';

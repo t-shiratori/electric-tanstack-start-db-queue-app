@@ -1,5 +1,5 @@
-import type { EntryEventRepository, CreateEntryEventData } from '~/domain/repositories'
-import { entryEventsCollection } from '../database/collections'
+import type { CreateEntryEventData, EntryEventRepository } from '~/domain/repositories';
+import { entryEventsCollection } from '../database/collections';
 
 /**
  * ElectricSQL実装のエントリーイベントリポジトリを作成
@@ -22,10 +22,10 @@ export function createElectricEntryEventRepository(): EntryEventRepository {
         actor: event.actor,
         device_id: event.device_id,
         created_at: event.created_at,
-      })
+      });
 
       // ElectricSQLのトランザクションが完了するまで待機
-      await tx.isPersisted.promise
-    }
-  }
+      await tx.isPersisted.promise;
+    },
+  };
 }

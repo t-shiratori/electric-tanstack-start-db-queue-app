@@ -1,8 +1,8 @@
-import { createCollection } from '@tanstack/react-db'
-import { electricCollectionOptions } from '@tanstack/electric-db-collection'
-import { DbEntrySchema, DbEntryEventSchema } from './schemas'
-import { insertEntry, insertEntryEvent } from './server-functions'
-import { electricConfig } from './client'
+import { electricCollectionOptions } from '@tanstack/electric-db-collection';
+import { createCollection } from '@tanstack/react-db';
+import { electricConfig } from './client';
+import { DbEntryEventSchema, DbEntrySchema } from './schemas';
+import { insertEntry, insertEntryEvent } from './server-functions';
 
 /**
  * エントリーコレクション
@@ -24,7 +24,7 @@ export const entriesCollection = createCollection(
       },
     },
     onInsert: async ({ transaction }) => {
-      const { modified: newEntry } = transaction.mutations[0]
+      const { modified: newEntry } = transaction.mutations[0];
       const result = await insertEntry({
         data: {
           id: newEntry.id,
@@ -33,11 +33,11 @@ export const entriesCollection = createCollection(
           party_size: newEntry.party_size,
           public_token: newEntry.public_token,
         },
-      })
-      return { txid: result.txid }
+      });
+      return { txid: result.txid };
     },
-  })
-)
+  }),
+);
 
 /**
  * エントリーイベントコレクション
@@ -60,7 +60,7 @@ export const entryEventsCollection = createCollection(
       },
     },
     onInsert: async ({ transaction }) => {
-      const { modified: newEvent } = transaction.mutations[0]
+      const { modified: newEvent } = transaction.mutations[0];
       const result = await insertEntryEvent({
         data: {
           id: newEvent.id,
@@ -69,8 +69,8 @@ export const entryEventsCollection = createCollection(
           actor: newEvent.actor,
           device_id: newEvent.device_id,
         },
-      })
-      return { txid: result.txid }
+      });
+      return { txid: result.txid };
     },
-  })
-)
+  }),
+);

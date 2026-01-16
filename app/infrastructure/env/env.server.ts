@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from 'zod';
 
 /**
  * サーバー側環境変数のスキーマ
@@ -13,7 +13,7 @@ const serverEnvSchema = z.object({
    * protocolオプションでpostgresqlプロトコルのみを許可
    */
   DATABASE_URL: z.url({ protocol: /^postgresql$/ }),
-})
+});
 
 /**
  * 検証済みサーバー環境変数
@@ -22,10 +22,10 @@ const serverEnvSchema = z.object({
  *
  * 注意: サーバー側（server functions）でのみ使用可能
  */
-export const serverEnv = serverEnvSchema.parse(process.env)
+export const serverEnv = serverEnvSchema.parse(process.env);
 
 /**
  * サーバー環境変数の型
  * TypeScript型推論により自動生成
  */
-export type ServerEnv = z.infer<typeof serverEnvSchema>
+export type ServerEnv = z.infer<typeof serverEnvSchema>;

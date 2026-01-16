@@ -1,7 +1,7 @@
-import type { EntryRepository, EntryEventRepository } from '~/domain/repositories'
-import { generateUuid } from '~/utils/uuid'
-import { generateToken } from './generate-token'
-import type { CreateEntryResult } from '../types'
+import type { EntryEventRepository, EntryRepository } from '~/domain/repositories';
+import { generateUuid } from '~/utils/uuid';
+import type { CreateEntryResult } from '../types';
+import { generateToken } from './generate-token';
 
 /**
  * 新規エントリーを作成するユースケース
@@ -25,10 +25,10 @@ export async function createEntry(
   eventRepository: EntryEventRepository,
   queueId: string,
   ticketNumber: number,
-  partySize: number = 1
+  partySize: number = 1,
 ): Promise<CreateEntryResult> {
-  const entryId = generateUuid()
-  const token = generateToken()
+  const entryId = generateUuid();
+  const token = generateToken();
 
   try {
     // 1. エントリーを挿入
@@ -39,7 +39,7 @@ export async function createEntry(
       party_size: partySize,
       public_token: token,
       created_at: new Date(),
-    })
+    });
 
     // 2. EntryCreatedイベントを記録
     await eventRepository.insert({
@@ -49,18 +49,18 @@ export async function createEntry(
       actor: 'staff',
       device_id: null,
       created_at: new Date(),
-    })
+    });
 
     return {
       success: true,
       entryId,
       token,
-    }
+    };
   } catch (error) {
-    console.error('Create entry error:', error)
+    console.error('Create entry error:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
-    }
+    };
   }
 }

@@ -6,10 +6,10 @@
  */
 export function generateToken(): string {
   // 読み間違えやすい文字を除外（I, O, 0, 1など）
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  let token = ''
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let token = '';
   for (let i = 0; i < 8; i++) {
-    token += chars.charAt(Math.floor(Math.random() * chars.length))
+    token += chars.charAt(Math.floor(Math.random() * chars.length));
   }
-  return token
+  return token;
 }

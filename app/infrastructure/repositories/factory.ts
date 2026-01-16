@@ -1,13 +1,13 @@
-import type { EntryRepository, EntryEventRepository } from '~/domain/repositories'
-import { createElectricEntryRepository } from './electric-entry-repository'
-import { createElectricEntryEventRepository } from './electric-entry-event-repository'
+import type { EntryEventRepository, EntryRepository } from '~/domain/repositories';
+import { createElectricEntryEventRepository } from './electric-entry-event-repository';
+import { createElectricEntryRepository } from './electric-entry-repository';
 
 /**
  * リポジトリのシングルトンインスタンス
  * アプリケーション全体で同じインスタンスを使用
  */
-let entryRepositoryInstance: EntryRepository | null = null
-let entryEventRepositoryInstance: EntryEventRepository | null = null
+let entryRepositoryInstance: EntryRepository | null = null;
+let entryEventRepositoryInstance: EntryEventRepository | null = null;
 
 /**
  * エントリーリポジトリのインスタンスを取得
@@ -15,9 +15,9 @@ let entryEventRepositoryInstance: EntryEventRepository | null = null
  */
 export function getEntryRepository(): EntryRepository {
   if (!entryRepositoryInstance) {
-    entryRepositoryInstance = createElectricEntryRepository()
+    entryRepositoryInstance = createElectricEntryRepository();
   }
-  return entryRepositoryInstance
+  return entryRepositoryInstance;
 }
 
 /**
@@ -26,7 +26,7 @@ export function getEntryRepository(): EntryRepository {
  */
 export function getEntryEventRepository(): EntryEventRepository {
   if (!entryEventRepositoryInstance) {
-    entryEventRepositoryInstance = createElectricEntryEventRepository()
+    entryEventRepositoryInstance = createElectricEntryEventRepository();
   }
-  return entryEventRepositoryInstance
+  return entryEventRepositoryInstance;
 }

@@ -1,4 +1,4 @@
-import { clientEnv } from '~/infrastructure/env/env.client'
+import { clientEnv } from '~/infrastructure/env/env.client';
 
 /**
  * ElectricSQL接続設定
@@ -9,4 +9,4 @@ export const electricConfig = {
   parser: {
     timestamptz: (value: string) => new Date(value),
   },
-}
+};

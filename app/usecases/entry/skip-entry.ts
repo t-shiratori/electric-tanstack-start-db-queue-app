@@ -1,6 +1,6 @@
-import type { EntryEventRepository } from '~/domain/repositories'
-import { addEntryEvent } from './add-entry-event'
-import type { UseCaseResult } from '../types'
+import type { EntryEventRepository } from '~/domain/repositories';
+import type { UseCaseResult } from '../types';
+import { addEntryEvent } from './add-entry-event';
 
 /**
  * エントリーをスキップするユースケース
@@ -14,7 +14,7 @@ import type { UseCaseResult } from '../types'
 export async function skipEntry(
   repository: EntryEventRepository,
   entryId: string,
-  deviceId?: string
+  deviceId?: string,
 ): Promise<UseCaseResult> {
-  return addEntryEvent(repository, entryId, 'EntrySkipped', 'staff', deviceId)
+  return addEntryEvent(repository, entryId, 'EntrySkipped', 'staff', deviceId);
 }

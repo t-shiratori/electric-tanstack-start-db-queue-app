@@ -4,7 +4,7 @@
  * - system: システム
  * - user: ユーザー
  */
-export type EventActor = 'staff' | 'system' | 'user'
+export type EventActor = 'staff' | 'system' | 'user';
 
 /**
  * エントリーイベントタイプ
@@ -15,12 +15,7 @@ export type EventActor = 'staff' | 'system' | 'user'
  * - EntrySkipped: エントリースキップ
  * - EntryCancelled: エントリーキャンセル
  */
-export type EntryEventType =
-  | 'EntryCreated'
-  | 'EntryCalled'
-  | 'EntryDone'
-  | 'EntrySkipped'
-  | 'EntryCancelled'
+export type EntryEventType = 'EntryCreated' | 'EntryCalled' | 'EntryDone' | 'EntrySkipped' | 'EntryCancelled';
 
 /**
  * エントリーの状態
@@ -31,7 +26,7 @@ export type EntryEventType =
  * - skipped: スキップ
  * - cancelled: キャンセル
  */
-export type EntryState = 'waiting' | 'called' | 'done' | 'skipped' | 'cancelled'
+export type EntryState = 'waiting' | 'called' | 'done' | 'skipped' | 'cancelled';
 
 /**
  * エントリーエンティティ
@@ -43,10 +38,10 @@ export type EntryState = 'waiting' | 'called' | 'done' | 'skipped' | 'cancelled'
  * @property token スマホアクセス用のユニークトークン
  */
 export interface Entry {
-  id: string
-  ticketNumber: number
-  createdAt: Date
-  token: string
+  id: string;
+  ticketNumber: number;
+  createdAt: Date;
+  token: string;
 }
 
 /**
@@ -61,11 +56,11 @@ export interface Entry {
  * @property actor イベント実行者（staff: スタッフ, system: システム, user: ユーザー）
  */
 export interface EntryEvent {
-  id: string
-  entryId: string
-  type: EntryEventType
-  createdAt: Date
-  actor: EventActor
+  id: string;
+  entryId: string;
+  type: EntryEventType;
+  createdAt: Date;
+  actor: EventActor;
 }
 
 /**
@@ -77,7 +72,7 @@ export interface EntryEvent {
  * @extends Entry {@link Entry}
  */
 export interface EntryWithState extends Entry {
-  state: EntryState
-  lastEventAt: Date
-  lastEventType: EntryEventType
+  state: EntryState;
+  lastEventAt: Date;
+  lastEventType: EntryEventType;
 }

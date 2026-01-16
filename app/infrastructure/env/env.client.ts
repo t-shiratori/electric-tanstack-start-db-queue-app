@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from 'zod';
 
 /**
  * クライアント側環境変数のスキーマ
@@ -19,10 +19,7 @@ const clientEnvSchema = z.object({
    * ローカル開発用のホスト名
    * .localhostドメインは自動的に127.0.0.1に解決される
    */
-  VITE_LOCAL_HOSTNAME: z
-    .string()
-    .min(1, 'VITE_LOCAL_HOSTNAME is required')
-    .describe('Local development hostname'),
+  VITE_LOCAL_HOSTNAME: z.string().min(1, 'VITE_LOCAL_HOSTNAME is required').describe('Local development hostname'),
 
   /**
    * ElectricSQL Shape APIのベースURL
@@ -30,7 +27,7 @@ const clientEnvSchema = z.object({
    * セキュリティのためHTTPSのみを許可
    */
   VITE_ELECTRIC_URL: z.url({ protocol: /^https$/ }),
-})
+});
 
 /**
  * 検証済みクライアント環境変数
@@ -39,13 +36,13 @@ const clientEnvSchema = z.object({
  *
  * 注意: クライアント側でのみ使用可能
  */
-export const clientEnv = clientEnvSchema.parse(import.meta.env)
+export const clientEnv = clientEnvSchema.parse(import.meta.env);
 
 /**
  * クライアント環境変数の型
  * TypeScript型推論により自動生成
  */
-export type ClientEnv = z.infer<typeof clientEnvSchema>
+export type ClientEnv = z.infer<typeof clientEnvSchema>;
 
 /**
  * ローカルネットワークからアクセス可能なベースURL
@@ -56,4 +53,4 @@ export type ClientEnv = z.infer<typeof clientEnvSchema>
  *
  * @example "https://192.168.11.8"
  */
-export const LOCAL_NETWORK_BASE_URL = `https://${clientEnv.VITE_LOCAL_IP_ADDRESS}` as const
+export const LOCAL_NETWORK_BASE_URL = `https://${clientEnv.VITE_LOCAL_IP_ADDRESS}` as const;

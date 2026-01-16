@@ -7,8 +7,8 @@
  * 成功/失敗を表現する
  */
 export interface UseCaseResult {
-  success: boolean
-  error?: string
+  success: boolean;
+  error?: string;
 }
 
 /**
@@ -16,13 +16,13 @@ export interface UseCaseResult {
  * 作成されたエントリーIDとトークンを含む
  */
 export interface CreateEntryResult extends UseCaseResult {
-  entryId?: string
-  token?: string
+  entryId?: string;
+  token?: string;
 }
 
 /**
  * 次の整理券番号取得結果
  */
 export interface GetNextTicketNumberResult {
-  number: number
+  number: number;
 }

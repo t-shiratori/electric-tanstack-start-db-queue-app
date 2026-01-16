@@ -9,5 +9,5 @@
  * @returns RFC 4122準拠のUUID v4文字列
  */
 export function generateUuid(): string {
-  return crypto.randomUUID()
+  return crypto.randomUUID();
 }

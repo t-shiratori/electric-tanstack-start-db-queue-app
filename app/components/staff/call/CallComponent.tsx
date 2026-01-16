@@ -1,20 +1,7 @@
-import {
-  ArrowLeftIcon,
-  BellIcon,
-  CheckIcon,
-  ForwardIcon,
-} from '@heroicons/react/24/outline'
-import {
-  useWaitingEntries,
-  useCalledEntries,
-  useNextWaitingEntry,
-} from '~/query'
-import {
-  callEntry,
-  markEntryDone,
-  skipEntry,
-} from '~/usecases/entry'
-import { getEntryEventRepository } from '~/infrastructure/repositories'
+import { ArrowLeftIcon, BellIcon, CheckIcon, ForwardIcon } from '@heroicons/react/24/outline';
+import { getEntryEventRepository } from '~/infrastructure/repositories';
+import { useCalledEntries, useNextWaitingEntry, useWaitingEntries } from '~/query';
+import { callEntry, markEntryDone, skipEntry } from '~/usecases/entry';
 
 /**
  * 呼び出し端末画面
@@ -24,48 +11,48 @@ import { getEntryEventRepository } from '~/infrastructure/repositories'
  * - 呼び出し済みエントリーの表示
  */
 export default function CallComponent() {
-  const waitingEntries = useWaitingEntries()
-  const calledEntries = useCalledEntries()
-  const nextEntry = useNextWaitingEntry()
+  const waitingEntries = useWaitingEntries();
+  const calledEntries = useCalledEntries();
+  const nextEntry = useNextWaitingEntry();
 
   /**
    * 次のエントリーを呼び出す
    */
   const handleCallNext = async () => {
     if (!nextEntry) {
-      alert('呼び出せるエントリーがありません')
-      return
+      alert('呼び出せるエントリーがありません');
+      return;
     }
 
-    const result = await callEntry(getEntryEventRepository(), nextEntry.id)
+    const result = await callEntry(getEntryEventRepository(), nextEntry.id);
     if (!result.success) {
-      alert(`呼び出しエラー: ${result.error}`)
+      alert(`呼び出しエラー: ${result.error}`);
     }
-  }
+  };
 
   /**
    * エントリーを完了としてマーク
    */
   const handleMarkDone = async (entryId: string) => {
-    const result = await markEntryDone(getEntryEventRepository(), entryId)
+    const result = await markEntryDone(getEntryEventRepository(), entryId);
     if (!result.success) {
-      alert(`完了処理エラー: ${result.error}`)
+      alert(`完了処理エラー: ${result.error}`);
     }
-  }
+  };
 
   /**
    * エントリーをスキップ
    */
   const handleSkip = async (entryId: string) => {
     if (!confirm('このエントリーをスキップしますか？')) {
-      return
+      return;
     }
 
-    const result = await skipEntry(getEntryEventRepository(), entryId)
+    const result = await skipEntry(getEntryEventRepository(), entryId);
     if (!result.success) {
-      alert(`スキップエラー: ${result.error}`)
+      alert(`スキップエラー: ${result.error}`);
     }
-  }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -73,12 +60,8 @@ export default function CallComponent() {
         {/* ヘッダー */}
         <div className="flex items-center justify-between mb-16">
           <div>
-            <h1 className="text-4xl font-semibold text-gray-900 mb-2">
-              呼び出し端末
-            </h1>
-            <p className="text-gray-600 font-light">
-              エントリーの呼び出しと対応管理
-            </p>
+            <h1 className="text-4xl font-semibold text-gray-900 mb-2">呼び出し端末</h1>
+            <p className="text-gray-600 font-light">エントリーの呼び出しと対応管理</p>
           </div>
           <a
             href="/"
@@ -94,16 +77,12 @@ export default function CallComponent() {
           <div className="space-y-8">
             {/* 次の呼び出し */}
             <div className="bg-white border-2 border-gray-200 rounded-xl p-10">
-              <h2 className="text-2xl font-semibold text-gray-900 mb-8">
-                次の呼び出し
-              </h2>
+              <h2 className="text-2xl font-semibold text-gray-900 mb-8">次の呼び出し</h2>
 
               {nextEntry ? (
                 <div className="text-center">
                   <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-12 mb-6">
-                    <div className="text-8xl font-semibold text-gray-900 mb-4">
-                      {nextEntry.ticketNumber}
-                    </div>
+                    <div className="text-8xl font-semibold text-gray-900 mb-4">{nextEntry.ticketNumber}</div>
                     <div className="text-sm text-gray-600 font-medium">
                       {new Date(nextEntry.createdAt).toLocaleString('ja-JP', {
                         month: 'long',
@@ -112,12 +91,11 @@ export default function CallComponent() {
                         minute: '2-digit',
                       })}
                     </div>
-                    <div className="text-xs text-gray-500 mt-2 font-mono">
-                      {nextEntry.token}
-                    </div>
+                    <div className="text-xs text-gray-500 mt-2 font-mono">{nextEntry.token}</div>
                   </div>
 
                   <button
+                    type="button"
                     onClick={handleCallNext}
                     className="w-full flex items-center justify-center gap-2 bg-gray-900 text-white font-medium py-5 px-6 rounded-full hover:bg-gray-800 transition-colors text-lg"
                   >
@@ -135,9 +113,7 @@ export default function CallComponent() {
 
             {/* 待機中リスト */}
             <div className="bg-white border-2 border-gray-200 rounded-xl p-10">
-              <h2 className="text-2xl font-semibold text-gray-900 mb-6">
-                待機中 ({waitingEntries.length})
-              </h2>
+              <h2 className="text-2xl font-semibold text-gray-900 mb-6">待機中 ({waitingEntries.length})</h2>
 
               <div className="space-y-2 max-h-96 overflow-y-auto">
                 {waitingEntries.map((entry) => (
@@ -146,9 +122,7 @@ export default function CallComponent() {
                     className="flex items-center justify-between bg-gray-50 border border-gray-200 p-4 rounded-lg"
                   >
                     <div className="flex items-center gap-4">
-                      <div className="text-2xl font-semibold text-gray-900">
-                        {entry.ticketNumber}
-                      </div>
+                      <div className="text-2xl font-semibold text-gray-900">{entry.ticketNumber}</div>
                       <div className="text-xs text-gray-500 font-medium">
                         {new Date(entry.createdAt).toLocaleTimeString('ja-JP', {
                           hour: '2-digit',
@@ -159,9 +133,7 @@ export default function CallComponent() {
                   </div>
                 ))}
                 {waitingEntries.length === 0 && (
-                  <div className="text-center text-gray-500 py-8 font-light">
-                    待機中のエントリーはありません
-                  </div>
+                  <div className="text-center text-gray-500 py-8 font-light">待機中のエントリーはありません</div>
                 )}
               </div>
             </div>
@@ -169,43 +141,30 @@ export default function CallComponent() {
 
           {/* 右カラム: 呼び出し済み */}
           <div className="bg-white border-2 border-gray-200 rounded-xl p-10">
-            <h2 className="text-2xl font-semibold text-gray-900 mb-6">
-              呼び出し済み ({calledEntries.length})
-            </h2>
+            <h2 className="text-2xl font-semibold text-gray-900 mb-6">呼び出し済み ({calledEntries.length})</h2>
 
             <div className="space-y-4 max-h-[calc(100vh-40px)] overflow-y-auto">
               {calledEntries.map((entry) => (
-                <div
-                  key={entry.id}
-                  className="bg-gray-50 border-2 border-gray-200 p-6 rounded-xl"
-                >
+                <div key={entry.id} className="bg-gray-50 border-2 border-gray-200 p-6 rounded-xl">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-4">
-                      <div className="text-4xl font-semibold text-gray-900">
-                        {entry.ticketNumber}
-                      </div>
+                      <div className="text-4xl font-semibold text-gray-900">{entry.ticketNumber}</div>
                       <div>
-                        <div className="text-xs text-gray-600 font-medium">
-                          呼び出し時刻
-                        </div>
+                        <div className="text-xs text-gray-600 font-medium">呼び出し時刻</div>
                         <div className="text-sm text-gray-900 font-medium">
-                          {new Date(entry.lastEventAt).toLocaleTimeString(
-                            'ja-JP',
-                            {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            }
-                          )}
+                          {new Date(entry.lastEventAt).toLocaleTimeString('ja-JP', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
                         </div>
                       </div>
                     </div>
-                    <div className="text-xs text-gray-500 font-mono">
-                      {entry.token}
-                    </div>
+                    <div className="text-xs text-gray-500 font-mono">{entry.token}</div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <button
+                      type="button"
                       onClick={() => handleMarkDone(entry.id)}
                       className="flex items-center justify-center gap-2 bg-gray-900 text-white font-medium py-3 px-4 rounded-lg hover:bg-gray-800 transition-colors"
                     >
@@ -213,6 +172,7 @@ export default function CallComponent() {
                       完了
                     </button>
                     <button
+                      type="button"
                       onClick={() => handleSkip(entry.id)}
                       className="flex items-center justify-center gap-2 bg-white border-2 border-gray-200 text-gray-700 font-medium py-3 px-4 rounded-lg hover:border-gray-400 transition-colors"
                     >
@@ -223,14 +183,12 @@ export default function CallComponent() {
                 </div>
               ))}
               {calledEntries.length === 0 && (
-                <div className="text-center text-gray-500 py-16 font-light">
-                  呼び出し済みのエントリーはありません
-                </div>
+                <div className="text-center text-gray-500 py-16 font-light">呼び出し済みのエントリーはありません</div>
               )}
             </div>
           </div>
         </div>
       </div>
     </div>
-  )
+  );
 }

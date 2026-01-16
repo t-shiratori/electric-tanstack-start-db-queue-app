@@ -9,10 +9,10 @@
  * @property averageWaitTime 平均待ち時間（分）
  */
 export interface QueueStats {
-  totalWaiting: number
-  totalCalled: number
-  totalDone: number
-  totalCancelled: number
-  totalSkipped: number
-  averageWaitTime: number
+  totalWaiting: number;
+  totalCalled: number;
+  totalDone: number;
+  totalCancelled: number;
+  totalSkipped: number;
+  averageWaitTime: number;
 }

@@ -1,2 +1,2 @@
-export * from './entry-repository'
-export * from './entry-event-repository'
+export * from './entry-event-repository';
+export * from './entry-repository';

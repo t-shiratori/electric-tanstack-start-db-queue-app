@@ -1,8 +1,8 @@
-import type { EntryEventType, EventActor } from '~/domain/entry'
-import { toDbEventType } from '~/domain/entry'
-import type { EntryEventRepository } from '~/domain/repositories'
-import { generateUuid } from '~/utils/uuid'
-import type { UseCaseResult } from '../types'
+import type { EntryEventType, EventActor } from '~/domain/entry';
+import { toDbEventType } from '~/domain/entry';
+import type { EntryEventRepository } from '~/domain/repositories';
+import { generateUuid } from '~/utils/uuid';
+import type { UseCaseResult } from '../types';
 
 /**
  * エントリーにイベントを追加するユースケース
@@ -20,7 +20,7 @@ export async function addEntryEvent(
   entryId: string,
   eventType: Exclude<EntryEventType, 'EntryCreated'>,
   actor: EventActor = 'staff',
-  deviceId?: string
+  deviceId?: string,
 ): Promise<UseCaseResult> {
   try {
     await repository.insert({
@@ -30,14 +30,14 @@ export async function addEntryEvent(
       actor,
       device_id: deviceId || null,
       created_at: new Date(),
-    })
+    });
 
-    return { success: true }
+    return { success: true };
   } catch (error) {
-    console.error('Add entry event error:', error)
+    console.error('Add entry event error:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
-    }
+    };
   }
 }
