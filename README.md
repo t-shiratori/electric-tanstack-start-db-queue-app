@@ -16,6 +16,7 @@ TanStack Start × TanStack DB × ElectricSQL による Local-First アプリケ�
 - **データベース**: PostgreSQL 17
 - **ローカルDB**: TanStack DB
 - **同期**: ElectricSQL
+- **リント・フォーマット**: Biome
 - **パッケージ管理**: pnpm
 
 ## セットアップ
@@ -118,7 +119,7 @@ docker compose up -d
 マイグレーションを実行してテーブルを作成します。
 
 ```bash
-docker exec -i queue-app-postgres psql -U postgres -d queue_app < db/migrations/001_create_tables.sql
+docker exec -i queue-app-postgres psql -U postgres -d queue_app < migrations/001_create_tables.sql
 ```
 
 ### 8. 開発サーバーの起動
@@ -140,7 +141,7 @@ HTTPSが必要な理由: このアプリはUUID生成に`crypto.randomUUID()`を
 ```bash
 docker compose down -v
 docker compose up -d
-docker exec -i queue-app-postgres psql -U postgres -d queue_app < db/migrations/001_create_tables.sql
+docker exec -i queue-app-postgres psql -U postgres -d queue_app < migrations/001_create_tables.sql
 ```
 
 ## 画面構成
@@ -219,7 +220,22 @@ docker exec queue-app-postgres psql -U postgres -d queue_app -c "
 必要に応じてマイグレーションを手動で実行できます。
 
 ```bash
-docker exec -i queue-app-postgres psql -U postgres -d queue_app < db/migrations/001_create_tables.sql
+docker exec -i queue-app-postgres psql -U postgres -d queue_app < migrations/001_create_tables.sql
+```
+
+### リント・フォーマット
+
+このプロジェクトではBiomeを使用しています。
+
+```bash
+# リント（自動修正付き）
+pnpm lint
+
+# フォーマット
+pnpm format
+
+# リント＋フォーマット（一括）
+pnpm check
 ```
 
 ### ビルド
