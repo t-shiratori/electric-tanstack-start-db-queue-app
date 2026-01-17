@@ -77,15 +77,11 @@
   - TypeScriptのpathマッピング対応
 
 ### コード品質
-- **ESLint** 9.17.0
-  - 静的コード解析
-  - TypeScript対応
-- **typescript-eslint** 8.20.0
-  - TypeScript用ESLintプラグイン
-- **Prettier** 3.4.2
-  - コードフォーマッター
-  - セミコロンなし設定
-  - シングルクォート使用
+- **Biome** 2.3.11
+  - 高速なリンター＆フォーマッター
+  - ESLint + Prettierの代替
+  - TypeScript/React対応
+  - ゼロ設定で動作
 
 ## ユーティリティ
 
@@ -166,6 +162,5 @@
    - Zod実行時バリデーション
    - TanStack Routerの型安全ルーティング
 4. **コード品質**
-   - ESLint自動チェック
-   - Prettier自動整形
+   - Biomeによるリント＆フォーマット
 
