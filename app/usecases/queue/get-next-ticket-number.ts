@@ -1,5 +1,5 @@
+import { trpc } from '~/client/trpc';
 import { UuidSchema } from '~/infrastructure/database';
-import { getNextTicketNumber as getNextTicketNumberFn } from '~/infrastructure/database/server-functions';
 import type { GetNextTicketNumberResult } from '../types';
 
 /**
@@ -11,9 +11,8 @@ import type { GetNextTicketNumberResult } from '../types';
  */
 export async function getNextTicketNumber(queueId: string): Promise<GetNextTicketNumberResult | { error: string }> {
   try {
-    // queueIdのバリデーション
     const validatedQueueId = UuidSchema.parse(queueId);
-    const result = await getNextTicketNumberFn({ data: validatedQueueId });
+    const result = await trpc.queue.getNextTicketNumber.query(validatedQueueId);
     return { number: result.number };
   } catch (error) {
     console.error('Get next ticket number error:', error);
