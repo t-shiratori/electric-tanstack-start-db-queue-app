@@ -27,7 +27,7 @@ export default function EntryComponent({ token }: EntryComponentProps) {
    * 待ち行列での順位を計算
    */
   const queuePosition = useMemo((): number | null => {
-    if (!entry || entry.state !== 'waiting') {
+    if (entry?.state !== 'waiting') {
       return null;
     }
 
