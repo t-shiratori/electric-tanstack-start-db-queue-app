@@ -71,6 +71,10 @@ DATABASE_URL=postgresql://USER:PASSWORD@HOST:PORT/DATABASE_NAME
 
 # ElectricSQL同期URL（自動的にVITE_LOCAL_IP_ADDRESSを使用）
 VITE_ELECTRIC_URL=https://${VITE_LOCAL_IP_ADDRESS}/v1/shape
+
+# Hono + tRPCサーバーのポート（省略時: 3001）
+# ※ 3000はElectricSQLが使用するため指定しないこと
+TRPC_PORT=3001
 ```
 
 IPアドレスの確認方法:
@@ -128,7 +132,9 @@ docker exec -i queue-app-postgres psql -U postgres -d queue_app < migrations/001
 pnpm dev
 ```
 
-アプリケーションは http://localhost:5173 (または`.env`で設定したVITE_DEV_PORT) で起動します。
+Vite開発サーバー（`dev:client`）とHono + tRPCサーバー（`dev:server`）が並列で起動します。個別に起動したい場合は `pnpm dev:client` / `pnpm dev:server` を使用してください。
+
+アプリケーションは http://localhost:5173 (または`.env`で設定したVITE_DEV_PORT) で起動します。tRPCサーバーは http://localhost:3001 (または`.env`で設定したTRPC_PORT) で起動し、Viteの `/trpc` プロキシ経由でアクセスされます。
 
 **推奨**: Caddyを経由してHTTPSでアクセスしてください: https://queue-app.localhost
 

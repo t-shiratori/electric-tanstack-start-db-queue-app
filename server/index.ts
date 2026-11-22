@@ -28,7 +28,7 @@ app.use(
 // ヘルスチェックエンドポイント
 app.get('/health', (c) => c.json({ status: 'ok' }));
 
-const port = Number(process.env.TRPC_PORT) || 3000;
+const port = Number(process.env.TRPC_PORT) || 3001;
 
 console.log(`🔥 Hono + tRPC server starting on port ${port}...`);
 

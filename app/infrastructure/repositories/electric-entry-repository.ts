@@ -25,7 +25,7 @@ export function createElectricEntryRepository(): EntryRepository {
       });
 
       // ElectricSQLのトランザクションが完了するまで待機
-      await tx.isPersisted.promise;
+      await tx.when('settled');
     },
   };
 }

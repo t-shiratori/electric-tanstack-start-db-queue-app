@@ -23,7 +23,7 @@ export const entriesCollection = createCollection(
         table: 'entry',
       },
     },
-    onInsert: async ({ transaction }) => {
+    onInsert: async ({ transaction, collection }) => {
       const { modified: newEntry } = transaction.mutations[0];
       const result = await trpc.entry.insert.mutate({
         id: newEntry.id,
@@ -32,7 +32,7 @@ export const entriesCollection = createCollection(
         party_size: newEntry.party_size,
         public_token: newEntry.public_token,
       });
-      return { txid: result.txid };
+      await collection.utils.awaitTxId(result.txid);
     },
   }),
 );
@@ -57,7 +57,7 @@ export const entryEventsCollection = createCollection(
         table: 'entry_event',
       },
     },
-    onInsert: async ({ transaction }) => {
+    onInsert: async ({ transaction, collection }) => {
       const { modified: newEvent } = transaction.mutations[0];
       const result = await trpc.entry.insertEvent.mutate({
         id: newEvent.id,
@@ -66,7 +66,7 @@ export const entryEventsCollection = createCollection(
         actor: newEvent.actor,
         device_id: newEvent.device_id,
       });
-      return { txid: result.txid };
+      await collection.utils.awaitTxId(result.txid);
     },
   }),
 );

@@ -9,7 +9,7 @@ export default defineConfig(({ mode }) => {
   const localIp = env.VITE_LOCAL_IP_ADDRESS;
   const localHostname = env.VITE_LOCAL_HOSTNAME;
   const devPort = Number.parseInt(env.VITE_DEV_PORT, 10);
-  const trpcPort = Number.parseInt(env.TRPC_PORT || '3000', 10);
+  const trpcPort = Number.parseInt(env.TRPC_PORT || '3001', 10);
 
   return {
     plugins: [
