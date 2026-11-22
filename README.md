@@ -1,6 +1,19 @@
-# 店舗向け順番待ち（待ち行列）アプリ
+# 店舗向け順番待ち（待ち行列）アプリのサンプル
 
 TanStack Start × TanStack DB × ElectricSQL による Local-First アプリケーション
+
+<img width="600" height="" alt="PC管理画面トップ" src="https://github.com/user-attachments/assets/d533f901-7c75-4732-9882-ff551735b5c9" /> </br>
+
+<img width="600" height="" alt="PC管理画面 受付端末画面" src="https://github.com/user-attachments/assets/df77f26b-256e-4bf5-a0de-9811fa91fa6a" /> </br>
+
+<img width="600" height="" alt="PC管理画面 呼び出し端末画面" src="https://github.com/user-attachments/assets/e89a9fa1-2a85-4f01-bae0-991c582d8ba2" /> </br>
+
+<img width="600" height="" alt="PC状況確認画面" src="https://github.com/user-attachments/assets/3de44d35-7c70-4adb-8c3e-22a10730abd4" /> </br>
+
+<img width="300" height="" alt="スマホ待機中" src="https://github.com/user-attachments/assets/e2504d42-7844-4efd-9b3e-e994d61b3bec" /> 
+
+<img width="300" height="" alt="スマホ呼び出し中" src="https://github.com/user-attachments/assets/50f69081-0397-4662-9191-e4059c886c97" />
+
 
 ## 特徴
 
