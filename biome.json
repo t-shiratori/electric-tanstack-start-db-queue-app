@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["app/**", "!app/routeTree.gen.ts"],
+    "includes": ["app/**", "server/**", "shared/**", "!app/routeTree.gen.ts"],
     "ignoreUnknown": true
   },
   "formatter": {

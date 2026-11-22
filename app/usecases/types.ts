@@ -13,11 +13,16 @@ export interface UseCaseResult {
 
 /**
  * エントリー作成ユースケースの結果
- * 作成されたエントリーIDとトークンを含む
+ * 作成されたエントリーID・トークン・確定した整理券番号を含む
+ * @property entryId エントリーID
+ * @property token スマホアクセス用トークン
+ * @property ticketNumber サーバーで確定した整理券番号
+ * @extends UseCaseResult {@link UseCaseResult}
  */
 export interface CreateEntryResult extends UseCaseResult {
   entryId?: string;
   token?: string;
+  ticketNumber?: number;
 }
 
 /**

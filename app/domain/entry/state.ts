@@ -74,3 +74,35 @@ export function isValidStateTransition(currentState: EntryState, eventType: Entr
 
   return false;
 }
+
+/**
+ * イベント追加可否の判定結果
+ * @property valid 追加してよいならtrue
+ * @property currentState 判定に使った現在の状態
+ */
+export interface EventAppendCheck {
+  valid: boolean;
+  currentState: EntryState;
+}
+
+/**
+ * 既存のイベント履歴に新しいイベントを追加してよいかを判定
+ * クライアント（楽観的更新の前）とサーバー（書き込み時）の両方で同じルールを使う
+ *
+ * ビジネスルール：
+ * - EntryCreated はイベントが1件もないときだけ追加できる
+ * - それ以外は isValidStateTransition の遷移ルールに従う
+ *
+ * @param events エントリーに関連する既存のイベント配列
+ * @param eventType 追加しようとしているイベント
+ * @returns 判定結果
+ */
+export function checkEventAppend(events: EntryEvent[], eventType: EntryEventType): EventAppendCheck {
+  const currentState = calculateCurrentState(events);
+
+  if (eventType === ENTRY_EVENT_TYPE.CREATED) {
+    return { valid: events.length === 0, currentState };
+  }
+
+  return { valid: isValidStateTransition(currentState, eventType), currentState };
+}

@@ -25,10 +25,10 @@ export const entriesCollection = createCollection(
     },
     onInsert: async ({ transaction, collection }) => {
       const { modified: newEntry } = transaction.mutations[0];
+      // 整理券番号はサーバーで採番する（newEntry.number は画面表示用の仮の番号）
       const result = await trpc.entry.insert.mutate({
         id: newEntry.id,
         queue_id: newEntry.queue_id,
-        number: newEntry.number,
         party_size: newEntry.party_size,
         public_token: newEntry.public_token,
       });

@@ -8,7 +8,7 @@ import { generateToken } from './generate-token';
  * 受付端末での整理券発行処理
  *
  * プロセス:
- * 1. エントリーレコードを作成
+ * 1. エントリーレコードを作成（仮の番号で即時表示し、サーバーで番号を確定）
  * 2. 作成完了を待機
  * 3. EntryCreatedイベントを記録
  * 4. イベント記録完了を待機
@@ -16,7 +16,7 @@ import { generateToken } from './generate-token';
  * @param entryRepository エントリーリポジトリ
  * @param eventRepository エントリーイベントリポジトリ
  * @param queueId 待ち行列ID
- * @param ticketNumber 整理券番号
+ * @param ticketNumber 仮の整理券番号（確定番号は戻り値の ticketNumber）
  * @param partySize 人数（デフォルト: 1）
  * @returns 作成結果（エントリーID・トークンを含む）
  */
@@ -31,8 +31,8 @@ export async function createEntry(
   const token = generateToken();
 
   try {
-    // 1. エントリーを挿入
-    await entryRepository.insert({
+    // 1. エントリーを挿入（戻り値はサーバーで確定した番号）
+    const persisted = await entryRepository.insert({
       id: entryId,
       queue_id: queueId,
       number: ticketNumber,
@@ -55,6 +55,7 @@ export async function createEntry(
       success: true,
       entryId,
       token,
+      ticketNumber: persisted.number,
     };
   } catch (error) {
     console.error('Create entry error:', error);

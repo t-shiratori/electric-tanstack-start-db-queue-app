@@ -1,5 +1,5 @@
 import type { EntryEventType, EventActor } from '~/domain/entry';
-import { toDbEventType } from '~/domain/entry';
+import { checkEventAppend, ENTRY_STATE_LABEL, toDbEventType } from '~/domain/entry';
 import type { EntryEventRepository } from '~/domain/repositories';
 import { generateUuid } from '~/utils/uuid';
 import type { UseCaseResult } from '../types';
@@ -7,6 +7,9 @@ import type { UseCaseResult } from '../types';
 /**
  * エントリーにイベントを追加するユースケース
  * イベントソーシングパターンでの状態変更の基本操作
+ *
+ * ローカルのイベント履歴から現在の状態を求め、状態遷移ルールに合わない操作は
+ * 書き込む前にエラーにする（サーバーでも同じルールで再検証する）
  *
  * @param repository エントリーイベントリポジトリ
  * @param entryId エントリーID
@@ -22,6 +25,14 @@ export async function addEntryEvent(
   actor: EventActor = 'staff',
   deviceId?: string,
 ): Promise<UseCaseResult> {
+  const check = checkEventAppend(repository.findByEntryId(entryId), eventType);
+  if (!check.valid) {
+    return {
+      success: false,
+      error: `現在の状態（${ENTRY_STATE_LABEL[check.currentState]}）からはこの操作を実行できません`,
+    };
+  }
+
   try {
     await repository.insert({
       id: generateUuid(),

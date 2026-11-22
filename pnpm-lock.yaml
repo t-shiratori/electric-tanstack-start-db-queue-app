@@ -211,9 +211,6 @@ importers:
       '@trpc/server':
         specifier: 11.29.5
         version: 11.29.5(typescript@7.0.2)
-      '@trpc/tanstack-react-query':
-        specifier: 11.29.5
-        version: 11.29.5(@tanstack/react-query@5.108.2(@types/react@19.3.0)(react@19.3.1))(@trpc/client@11.29.5(@trpc/server@11.29.5(typescript@7.0.2))(typescript@7.0.2))(@trpc/server@11.29.5(typescript@7.0.2))(react@19.3.1)(typescript@7.0.2)
       '@types/pg':
         specifier: 8.23.1
         version: 8.23.1
@@ -1063,14 +1060,12 @@ packages:
 
   '@trpc/client@11.29.5':
     resolution: {integrity: sha512-EGebaRjt/rDHt7gJ6nv262nLRPalzwSyI/dEMYtA+PBEy/HxhoVUW3bQqyE34cozJNj2HAgB+TqXVe76pWGk+Q==}
-    hasBin: true
     peerDependencies:
       '@trpc/server': 11.29.5
       typescript: '>=5.7.2'
 
   '@trpc/server@11.29.5':
     resolution: {integrity: sha512-8ET3fqBo4byVkjLNU047NFwmT3JQIjZCVpdJwanb6Tpv7b5P3M9pjN7JofqGyDQZaDR5XLkWX2hWrsIpjtt5wA==}
-    hasBin: true
     peerDependencies:
       '@types/aws-lambda': '*'
       '@types/express': '*'
@@ -1089,16 +1084,6 @@ packages:
         optional: true
       next:
         optional: true
-
-  '@trpc/tanstack-react-query@11.29.5':
-    resolution: {integrity: sha512-PgZ0aRqTtbDwOFFDj+m9ikInSlnIoYWM6wfp9gJo9iO5/oWa1DcoU4OHrlaNYsLEmxM0eRWnBmgGZkyZ5vsW4g==}
-    hasBin: true
-    peerDependencies:
-      '@tanstack/react-query': ^5.106.0
-      '@trpc/client': 11.29.5
-      '@trpc/server': 11.29.5
-      react: '>=18.2.0'
-      typescript: '>=5.7.2'
 
   '@tybys/wasm-util@0.10.5':
     resolution: {integrity: sha512-dOGOPxlaNV+G046mZzN+9C0dAcQZeSKcXiVaM0TYy/LM4ttTmgSBDxYfovcYI8Em3+eAbiAYpvWLOv8+ZVRJKA==}
@@ -2632,14 +2617,6 @@ snapshots:
 
   '@trpc/server@11.29.5(typescript@7.0.2)':
     dependencies:
-      typescript: 7.0.2
-
-  '@trpc/tanstack-react-query@11.29.5(@tanstack/react-query@5.108.2(@types/react@19.3.0)(react@19.3.1))(@trpc/client@11.29.5(@trpc/server@11.29.5(typescript@7.0.2))(typescript@7.0.2))(@trpc/server@11.29.5(typescript@7.0.2))(react@19.3.1)(typescript@7.0.2)':
-    dependencies:
-      '@tanstack/react-query': 5.108.2(@types/react@19.3.0)(react@19.3.1)
-      '@trpc/client': 11.29.5(@trpc/server@11.29.5(typescript@7.0.2))(typescript@7.0.2)
-      '@trpc/server': 11.29.5(typescript@7.0.2)
-      react: 19.3.1
       typescript: 7.0.2
 
   '@tybys/wasm-util@0.10.5':

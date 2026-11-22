@@ -1,5 +1,7 @@
+import type { EntryEvent } from '~/domain/entry';
 import type { CreateEntryEventData, EntryEventRepository } from '~/domain/repositories';
 import { entryEventsCollection } from '../database/collections';
+import { toDomainEntryEvent } from '../database/mappers/entry-event-mapper';
 
 /**
  * ElectricSQL実装のエントリーイベントリポジトリを作成
@@ -9,6 +11,16 @@ import { entryEventsCollection } from '../database/collections';
  */
 export function createElectricEntryEventRepository(): EntryEventRepository {
   return {
+    /**
+     * エントリーに紐づくイベントを取得する
+     * コレクションの現在の内容（同期済み＋未確定の変更）から絞り込む
+     * @param entryId エントリーID
+     * @returns ドメインのイベント配列
+     */
+    findByEntryId(entryId: string): EntryEvent[] {
+      return entryEventsCollection.toArray.filter((event) => event.entry_id === entryId).map(toDomainEntryEvent);
+    },
+
     /**
      * エントリーイベントを挿入する
      * @param event イベントデータ

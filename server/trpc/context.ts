@@ -15,10 +15,7 @@ export interface Context {
  * tRPCコンテキスト作成関数
  * リクエストごとに呼び出される
  */
-export function createContext(
-  _opts: FetchCreateContextFnOptions,
-  _c: HonoContext,
-): Context {
+export function createContext(_opts: FetchCreateContextFnOptions, _c: HonoContext): Context {
   return {
     pool,
   };

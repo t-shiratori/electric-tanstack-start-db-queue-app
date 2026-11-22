@@ -1,72 +1,26 @@
 import { z } from 'zod';
+import { DB_EVENT_TYPES, EVENT_ACTORS, UuidSchema } from '../../../shared/schemas';
 
 /**
- * UUID文字列のバリデーションスキーマ
- * RFC 4122準拠のUUIDを使用
+ * テーブル定義のスキーマはサーバーと共有するため shared/schemas.ts で定義している
  */
-export const UuidSchema = z.uuid();
-export type Uuid = z.infer<typeof UuidSchema>;
+export {
+  type DbEntry,
+  type DbEntryEvent,
+  DbEntryEventSchema,
+  DbEntrySchema,
+  type InsertDbEntry,
+  type InsertDbEntryEvent,
+  InsertDbEntryEventSchema,
+  InsertDbEntrySchema,
+  type Uuid,
+  UuidSchema,
+} from '../../../shared/schemas';
 
 /**
- * データベース層のイベントタイプ配列
- * PostgreSQLのenum値に対応
- */
-const DB_EVENT_TYPES = ['created', 'called', 'done', 'skipped', 'cancelled'] as const;
-
-/**
- * イベント実行者の種類配列
- */
-const EVENT_ACTORS = ['staff', 'system', 'user'] as const;
-
-/**
- * データベース層のentryテーブルスキーマ
- * PostgreSQLのテーブル構造に対応（snake_case）
- */
-export const DbEntrySchema = z.object({
-  id: UuidSchema,
-  queue_id: UuidSchema,
-  number: z.number().int().positive(),
-  party_size: z.number().int().positive().default(1),
-  public_token: z
-    .string()
-    .length(8)
-    .regex(/^[A-Z0-9]+$/),
-  created_at: z.date(),
-});
-
-export type DbEntry = z.infer<typeof DbEntrySchema>;
-
-/**
- * データベース層のentry_eventテーブルスキーマ
- * PostgreSQLのテーブル構造に対応（snake_case）
- */
-export const DbEntryEventSchema = z.object({
-  id: UuidSchema,
-  entry_id: UuidSchema,
-  type: z.enum(DB_EVENT_TYPES),
-  created_at: z.date(),
-  actor: z.enum(EVENT_ACTORS),
-  device_id: z.string().nullable(),
-});
-
-export type DbEntryEvent = z.infer<typeof DbEntryEventSchema>;
-
-/**
- * サーバー関数用のバリデーションスキーマ（created_atなし）
- * サーバー側でcreated_atを自動設定するため
- */
-export const InsertDbEntrySchema = DbEntrySchema.omit({ created_at: true });
-export type InsertDbEntry = z.infer<typeof InsertDbEntrySchema>;
-
-export const InsertDbEntryEventSchema = DbEntryEventSchema.omit({
-  created_at: true,
-});
-export type InsertDbEntryEvent = z.infer<typeof InsertDbEntryEventSchema>;
-
-/**
- * JOINクエリの結果のバリデーションスキーマ
+ * JOINクエリの結果のバリデーションスキーマ（クライアント専用）
  * entry と entry_event の LEFT JOIN 結果を表現
- * PostgreSQLのTIMESTAMPTZ型は文字列として返されるため、z.coerce.date()で変換する
+ * 日時は Electric の parser で Date に変換済みだが、念のため z.coerce.date() で Date にそろえる
  */
 export const JoinedEntryEventRowSchema = z.object({
   id: UuidSchema,

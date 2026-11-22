@@ -1,6 +1,13 @@
 import { z } from 'zod';
 
 /**
+ * クライアント（app/）とサーバー（server/）で共有するZodスキーマ
+ *
+ * どちらの実行環境にも依存しない（import.meta.env や pg を参照しない）ため、
+ * ブラウザ・Node.js の両方から安全にインポートできる。
+ */
+
+/**
  * UUID文字列のバリデーションスキーマ
  * RFC 4122準拠のUUIDを使用
  */
@@ -9,14 +16,14 @@ export type Uuid = z.infer<typeof UuidSchema>;
 
 /**
  * データベース層のイベントタイプ配列
- * PostgreSQLのenum値に対応
+ * PostgreSQLのCHECK制約の値に対応
  */
-const DB_EVENT_TYPES = ['created', 'called', 'done', 'skipped', 'cancelled'] as const;
+export const DB_EVENT_TYPES = ['created', 'called', 'done', 'skipped', 'cancelled'] as const;
 
 /**
  * イベント実行者の種類配列
  */
-const EVENT_ACTORS = ['staff', 'system', 'user'] as const;
+export const EVENT_ACTORS = ['staff', 'system', 'user'] as const;
 
 /**
  * データベース層のentryテーブルスキーマ
@@ -52,12 +59,17 @@ export const DbEntryEventSchema = z.object({
 export type DbEntryEvent = z.infer<typeof DbEntryEventSchema>;
 
 /**
- * サーバー関数用のバリデーションスキーマ（created_atなし）
- * サーバー側でcreated_atを自動設定するため
+ * エントリー挿入（tRPC）の入力スキーマ
+ * - created_at はサーバーで now() を設定する
+ * - number（整理券番号）は競合を防ぐためサーバーで採番する
  */
-export const InsertDbEntrySchema = DbEntrySchema.omit({ created_at: true });
+export const InsertDbEntrySchema = DbEntrySchema.omit({ created_at: true, number: true });
 export type InsertDbEntry = z.infer<typeof InsertDbEntrySchema>;
 
+/**
+ * エントリーイベント挿入（tRPC）の入力スキーマ
+ * created_at はサーバーで now() を設定する
+ */
 export const InsertDbEntryEventSchema = DbEntryEventSchema.omit({
   created_at: true,
 });

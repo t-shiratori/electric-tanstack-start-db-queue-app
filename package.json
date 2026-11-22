@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "pnpm run --parallel \"/^dev:/\"",
     "dev:client": "vite",
-    "dev:server":"tsx watch --env-file=.env server/index.ts",
+    "dev:server": "tsx watch --env-file=.env server/index.ts",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "biome lint --write",
@@ -29,7 +29,6 @@
     "@tanstack/react-start": "1.169.7",
     "@trpc/client": "11.29.5",
     "@trpc/server": "11.29.5",
-    "@trpc/tanstack-react-query": "11.29.5",
     "@types/pg": "8.23.1",
     "hono": "4.13.19",
     "pg": "8.23.1",

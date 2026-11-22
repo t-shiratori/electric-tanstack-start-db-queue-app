@@ -17,6 +17,22 @@ export const ENTRY_STATE = {
 } as const satisfies Record<string, EntryState>;
 
 /**
+ * エントリーの状態の表示名
+ * @property waiting 待機中
+ * @property called 呼び出し中
+ * @property done 完了
+ * @property skipped スキップ
+ * @property cancelled キャンセル済み
+ */
+export const ENTRY_STATE_LABEL = {
+  waiting: '待機中',
+  called: '呼び出し中',
+  done: '完了',
+  skipped: 'スキップ',
+  cancelled: 'キャンセル済み',
+} as const satisfies Record<EntryState, string>;
+
+/**
  * イベント実行者の種類定数
  * @property STAFF スタッフ
  * @property SYSTEM システム

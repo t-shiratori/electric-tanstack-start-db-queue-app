@@ -133,11 +133,14 @@ docker compose up -d
 
 ### 7. データベースの初期化
 
-マイグレーションを実行してテーブルを作成します。
+マイグレーションを番号順に実行してテーブルを作成します。
 
 ```bash
 docker exec -i queue-app-postgres psql -U postgres -d queue_app < migrations/001_create_tables.sql
+docker exec -i queue-app-postgres psql -U postgres -d queue_app < migrations/002_created_at_timestamptz.sql
 ```
+
+※ `002` は既存のデータベースの `created_at` を `TIMESTAMPTZ` に変換するマイグレーションです。新しく作成したデータベースでは何も変更しません（何度実行しても安全です）。
 
 ### 8. 開発サーバーの起動
 
@@ -161,6 +164,7 @@ HTTPSが必要な理由: このアプリはUUID生成に`crypto.randomUUID()`を
 docker compose down -v
 docker compose up -d
 docker exec -i queue-app-postgres psql -U postgres -d queue_app < migrations/001_create_tables.sql
+docker exec -i queue-app-postgres psql -U postgres -d queue_app < migrations/002_created_at_timestamptz.sql
 ```
 
 ## 画面構成
@@ -236,10 +240,11 @@ docker exec queue-app-postgres psql -U postgres -d queue_app -c "
 
 ### マイグレーションの手動実行
 
-必要に応じてマイグレーションを手動で実行できます。
+必要に応じてマイグレーションを手動で実行できます（番号順に実行）。
 
 ```bash
 docker exec -i queue-app-postgres psql -U postgres -d queue_app < migrations/001_create_tables.sql
+docker exec -i queue-app-postgres psql -U postgres -d queue_app < migrations/002_created_at_timestamptz.sql
 ```
 
 ### リント・フォーマット

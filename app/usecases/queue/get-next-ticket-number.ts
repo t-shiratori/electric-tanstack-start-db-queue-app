@@ -5,6 +5,7 @@ import type { GetNextTicketNumberResult } from '../types';
 /**
  * 次の整理券番号を取得するユースケース
  * 待ち行列の最大番号+1を返す
+ * 発行時に画面へ即時表示するための仮の番号で、確定番号はエントリー作成時にサーバーが採番する
  *
  * @param queueId 待ち行列ID
  * @returns 次の整理券番号、またはエラー

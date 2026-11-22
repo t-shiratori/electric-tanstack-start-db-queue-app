@@ -35,7 +35,7 @@ export default function ReceptionComponent() {
   const handleCreateEntry = async () => {
     setIsCreating(true);
     try {
-      // 次の整理券番号を取得
+      // 次の整理券番号（仮）を取得。確定番号はエントリー作成時にサーバーで採番される
       const nextNumberResult = await getNextTicketNumber(QUEUE_ID);
       if ('error' in nextNumberResult) {
         alert(`番号取得エラー: ${nextNumberResult.error}`);
@@ -68,7 +68,7 @@ export default function ReceptionComponent() {
       });
 
       setCreatedEntry({
-        ticketNumber: nextNumberResult.number,
+        ticketNumber: result.ticketNumber ?? nextNumberResult.number,
         token: result.token ?? '',
         qrCodeUrl,
       });

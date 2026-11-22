@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS queue (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'open',
-  created_at TIMESTAMP NOT NULL DEFAULT now()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Entry table (受付情報、状態は持たない)
@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS entry (
   number INT NOT NULL,
   party_size INT NOT NULL DEFAULT 1,
   public_token TEXT NOT NULL UNIQUE,
-  created_at TIMESTAMP NOT NULL DEFAULT now(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(queue_id, number)
 );
 
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS entry_event (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   entry_id UUID NOT NULL REFERENCES entry(id) ON DELETE CASCADE,
   type TEXT NOT NULL CHECK (type IN ('created', 'called', 'done', 'skipped', 'cancelled')),
-  created_at TIMESTAMP NOT NULL DEFAULT now(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   device_id TEXT,
   actor TEXT DEFAULT 'staff'
 );
