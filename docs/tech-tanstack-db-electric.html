@@ -1,0 +1,1054 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TanStack DB と Electric</title>
+  <meta name="description" content="順番待ちアプリの中核技術である ElectricSQL と TanStack DB の技術解説。Electric と PostgreSQL の役割の違い、変更が届くまでの 3 区間、Shape の購読（HTTP ロングポーリング）、コレクション、ライブクエリ、楽観的更新、txid による確定待ち、全体のシーケンスを図で説明します。">
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="assets/docs.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="brand" href="index.html"><span class="brand__mark">Q</span>順番待ちアプリ 解説資料</a>
+      <nav class="site-nav" data-site-nav aria-label="資料一覧"></nav>
+      <button class="icon-btn nav-toggle" data-nav-toggle aria-label="メニューを開く"></button>
+      <button class="icon-btn" data-theme-toggle aria-label="テーマ切り替え"></button>
+    </div>
+  </header>
+  <div class="scrim"></div>
+
+  <div class="layout">
+    <aside class="sidenav" data-sidenav></aside>
+    <main class="main">
+      <article class="doc">
+        <div class="eyebrow">Tech Deep Dive</div>
+        <h1>TanStack DB × ElectricSQL<br>技術解説</h1>
+        <p class="lead">
+          このアプリが「再読み込みなしで全端末が同じ状態を表示する」のは、
+          <strong>ElectricSQL</strong>（PostgreSQL の変更を配る同期エンジン）と
+          <strong>TanStack DB</strong>（ブラウザ内のリアクティブなデータストア）の組み合わせによるものです。
+          それぞれの役割と、2 つをつなぐしくみを順に解説します。全体の流れだけを先に見たい場合は<a href="#sequence">05 全体のシーケンス</a>へ。
+        </p>
+        <div class="doc-meta">
+          <span class="chip"><span class="dot c-electric"></span>@electric-sql/client 1.5.28</span>
+          <span class="chip"><span class="dot c-db"></span>@tanstack/react-db 1.0.0-rc.1.5</span>
+          <span class="chip"><span class="dot c-db"></span>@tanstack/electric-db-collection 1.0.0-rc.1.5</span>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="why"><span class="num">01</span>何を解決しているのか</h2>
+        <p>一般的な Web アプリと、このアプリのデータの取り方を比べると違いがよく分かります。</p>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 900 270" role="img" aria-labelledby="why-t">
+              <title id="why-t">従来型のデータ取得とローカルファースト型の比較</title>
+              <!-- left -->
+              <text x="16" y="24" class="t-b">従来型：画面のたびに API へ問い合わせる</text>
+              <g class="c-client"><rect class="node" x="16" y="48" width="120" height="60" rx="10"/><text x="76" y="83" text-anchor="middle" class="t-sm t-b">画面</text></g>
+              <g class="c-server"><rect class="node" x="190" y="48" width="110" height="60" rx="10"/><text x="245" y="83" text-anchor="middle" class="t-sm t-b">API</text></g>
+              <g class="c-pg"><rect class="node" x="350" y="48" width="70" height="60" rx="10"/><text x="385" y="83" text-anchor="middle" class="t-sm t-b">DB</text></g>
+              <path class="edge" d="M136 70 H186" marker-end="url(#ah)"/>
+              <path class="edge dash" d="M186 88 H140" marker-end="url(#ah)"/>
+              <path class="edge" d="M300 78 H346" marker-end="url(#ah)"/>
+              <text x="161" y="64" text-anchor="middle" class="t-xs t-muted">fetch</text>
+              <g class="t-xs">
+                <text x="16" y="140" class="t-xs">・他の端末の変更は<tspan class="t-b">ポーリング</tspan>しないと分からない</text>
+                <text x="16" y="162" class="t-xs">・画面ごとに「読み込み中」と通信待ちが発生</text>
+                <text x="16" y="184" class="t-xs">・操作の結果はサーバーの応答まで表示できない</text>
+                <text x="16" y="206" class="t-xs">・キャッシュの更新・無効化を自分で管理</text>
+              </g>
+
+              <path d="M450 20 V250" stroke="var(--line)" stroke-width="1"/>
+
+              <!-- right -->
+              <text x="476" y="24" class="t-b">このアプリ：ローカルのデータを見るだけ</text>
+              <g class="c-client"><rect class="node" x="476" y="48" width="100" height="60" rx="10"/><text x="526" y="83" text-anchor="middle" class="t-sm t-b">画面</text></g>
+              <g class="c-db"><rect class="node" x="606" y="48" width="120" height="60" rx="10"/><text x="666" y="74" text-anchor="middle" class="t-sm t-b">TanStack DB</text><text x="666" y="92" text-anchor="middle" class="t-xs t-muted">ブラウザ内</text></g>
+              <g class="c-electric"><rect class="node" x="756" y="48" width="70" height="60" rx="10"/><text x="791" y="83" text-anchor="middle" class="t-xs t-b">Electric</text></g>
+              <g class="c-pg"><rect class="node" x="840" y="48" width="48" height="60" rx="10"/><text x="864" y="83" text-anchor="middle" class="t-xs t-b">DB</text></g>
+              <path class="edge-c c-db" d="M606 78 H580" marker-end="url(#ah-db)"/>
+              <text x="591" y="70" text-anchor="middle" class="t-xs t-muted">即時</text>
+              <path class="edge-c c-electric" d="M756 78 H730" marker-end="url(#ah-electric)"/>
+              <path class="edge-c c-pg" d="M840 78 H830" marker-end="url(#ah-pg)"/>
+              <text x="760" y="128" class="t-xs" style="fill:var(--c-electric)">変更を自動で配信（push）</text>
+              <g class="t-xs">
+                <text x="476" y="162" class="t-xs">・他の端末の変更が<tspan class="t-b">自動で届く</tspan></text>
+                <text x="476" y="184" class="t-xs">・画面はローカルのデータに問い合わせるので速い</text>
+                <text x="476" y="206" class="t-xs">・操作は<tspan class="t-b">楽観的</tspan>に即時表示し、裏で確定させる</text>
+                <text x="476" y="228" class="t-xs">・「どのデータが最新か」は同期エンジンが管理</text>
+              </g>
+            </svg>
+          </div>
+          <figcaption>図 1-1. データ取得の考え方の違い ― 「取りに行く」から「届いたものを見る」へ</figcaption>
+        </figure>
+        <div class="cards">
+          <div class="card card--accent c-electric"><h4>ElectricSQL の担当</h4><p>PostgreSQL の変更を検知し、購読しているブラウザへ配る。<strong>読み取りの同期</strong>だけを行う。</p></div>
+          <div class="card card--accent c-db"><h4>TanStack DB の担当</h4><p>届いたデータをブラウザ内に保持し、<strong>JOIN や絞り込み</strong>を差分で再計算する。書き込みを<strong>楽観的に</strong>反映する。</p></div>
+          <div class="card card--accent c-server"><h4>tRPC（自前 API）の担当</h4><p>Electric ができない<strong>書き込み</strong>を受け持つ。詳しくは<a href="tech-trpc.html">tRPC の解説</a>へ。</p></div>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="electric"><span class="num">02</span>ElectricSQL のしくみ</h2>
+        <h3 id="electric-vs-pg">Electric は DB ではない：データの置き場所</h3>
+        <p>
+          Electric は名前に SQL と付きますが、<strong>データベースではありません</strong>。データの「正本」は PostgreSQL にだけあり、
+          Electric は PostgreSQL の変更をブラウザへ届ける<strong>同期エンジン</strong>（配達係）です。
+          たとえるなら、PostgreSQL が<strong>本店の台帳</strong>、Electric は台帳の変更を写して各店舗に配る<strong>配送センター</strong>です。
+        </p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th></th><th>PostgreSQL</th><th>Electric</th></tr></thead>
+            <tbody>
+              <tr><td>役割</td><td>データベース（正本）</td><td>同期エンジン（配達係）</td></tr>
+              <tr><td>持っているデータ</td><td>テーブルの本物のデータ</td><td>PostgreSQL から写した変更のログ（Shape ログ）。配達を効率よくするためのキャッシュ</td></tr>
+              <tr><td>書き込み</td><td>受け付ける（INSERT / UPDATE …）</td><td><strong>受け付けない</strong>（読み取り専用）</td></tr>
+              <tr><td>消えたら</td><td>データを失う</td><td>PostgreSQL から作り直せる（このアプリでは Electric にボリュームを付けていない）</td></tr>
+              <tr><td>問い合わせ方</td><td>SQL</td><td>HTTP（<code>GET /v1/shape?table=…</code>）</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>データは次の 4 か所にあります。画面（ライブクエリ）が見ているのは <strong>③ ＋ ④</strong> だけで、表示のためにサーバーへ問い合わせることはありません。</p>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 900 340" role="img" aria-labelledby="loc-t" style="min-width:720px">
+              <title id="loc-t">データの置き場所と、読み取り・書き込みの経路</title>
+              <!-- browser -->
+              <g class="c-client">
+                <rect class="zone" x="16" y="16" width="290" height="296" rx="14"/>
+                <text x="32" y="40" class="t-sm t-b" style="fill:var(--c-client)">ブラウザ（各端末）</text>
+                <rect class="node" x="40" y="56" width="242" height="44" rx="9"/>
+                <text x="161" y="76" text-anchor="middle" class="t-sm t-b">画面（ライブクエリ）</text>
+                <text x="161" y="92" text-anchor="middle" class="t-xs t-muted">③ ＋ ④ を重ねて表示</text>
+              </g>
+              <g class="c-db">
+                <rect class="node dash" x="70" y="134" width="212" height="54" rx="9"/>
+                <text x="176" y="157" text-anchor="middle" class="t-sm t-b">④ 楽観的な層</text>
+                <text x="176" y="175" text-anchor="middle" class="t-xs t-muted">自分の未確定の操作（一時的）</text>
+                <rect class="node" x="70" y="222" width="212" height="66" rx="9"/>
+                <text x="176" y="246" text-anchor="middle" class="t-sm t-b">③ 同期済みの層</text>
+                <text x="176" y="264" text-anchor="middle" class="t-xs t-muted">PostgreSQL の写し（メモリ）</text>
+                <text x="176" y="279" text-anchor="middle" class="t-xs t-muted">再読み込みで消え、② から取り直す</text>
+              </g>
+              <path class="edge" d="M176 134 V104" marker-end="url(#ah)"/>
+              <path class="edge" d="M70 255 C34 255, 28 82, 36 82" marker-end="url(#ah)"/>
+
+              <!-- tRPC -->
+              <g class="c-server">
+                <rect class="node" x="380" y="120" width="160" height="60" rx="10"/>
+                <text x="460" y="145" text-anchor="middle" class="t-sm t-b">tRPC サーバー</text>
+                <text x="460" y="163" text-anchor="middle" class="t-xs t-muted">書き込みの窓口</text>
+              </g>
+              <!-- Electric -->
+              <g class="c-electric">
+                <rect class="node" x="380" y="220" width="160" height="70" rx="10"/>
+                <text x="460" y="244" text-anchor="middle" class="t-sm t-b">② Electric</text>
+                <text x="460" y="262" text-anchor="middle" class="t-xs t-muted">Shape ログ（キャッシュ）</text>
+                <text x="460" y="277" text-anchor="middle" class="t-xs t-muted">作り直せる写し</text>
+              </g>
+              <!-- PostgreSQL -->
+              <g class="c-pg">
+                <path class="node" d="M640 112 v168 a120 14 0 0 0 240 0 v-168"/>
+                <ellipse class="node" cx="760" cy="112" rx="120" ry="14"/>
+                <text x="760" y="168" text-anchor="middle" class="t-b">① PostgreSQL</text>
+                <text x="760" y="190" text-anchor="middle" class="t-xs mono">entry / entry_event</text>
+                <text x="760" y="212" text-anchor="middle" class="t-xs t-muted">データの正本（永続）</text>
+              </g>
+
+              <!-- write path -->
+              <path class="edge-c c-server" d="M282 158 H376" marker-end="url(#ah-server)"/>
+              <text x="329" y="150" text-anchor="middle" class="t-xs" style="fill:var(--c-server)">書き込み</text>
+              <path class="edge-c c-server" d="M540 150 H636" marker-end="url(#ah-server)"/>
+              <text x="588" y="142" text-anchor="middle" class="t-xs" style="fill:var(--c-server)">INSERT</text>
+              <!-- read path -->
+              <path class="edge-c c-electric" d="M640 255 H544" marker-end="url(#ah-electric)"/>
+              <text x="592" y="247" text-anchor="middle" class="t-xs" style="fill:var(--c-electric)">WAL</text>
+              <path class="edge-c c-electric" d="M380 255 H286" marker-end="url(#ah-electric)"/>
+              <text x="333" y="247" text-anchor="middle" class="t-xs" style="fill:var(--c-electric)">HTTP</text>
+
+              <text x="590" y="326" text-anchor="middle" class="t-xs t-muted">書いたデータは ① に入ってから、読み取りの道（① → ② → ③）を通って自分の画面にも戻ってくる</text>
+            </svg>
+          </div>
+          <div class="legend">
+            <span class="c-server"><i class="line"></i>書き込みの経路（tRPC → PostgreSQL）</span>
+            <span class="c-electric"><i class="line"></i>読み取りの経路（PostgreSQL → Electric → ブラウザ）</span>
+          </div>
+          <figcaption>図 2-1. データの置き場所 ― 本物は PostgreSQL だけ。Electric とブラウザにあるのはその写し</figcaption>
+        </figure>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>場所</th><th>何があるか</th><th>寿命</th></tr></thead>
+            <tbody>
+              <tr><td>① PostgreSQL</td><td><code>entry</code> / <code>entry_event</code> テーブルの本物のデータ</td><td>永続</td></tr>
+              <tr><td>② Electric の Shape ログ</td><td>① の変更を写したログ</td><td>作り直せるキャッシュ</td></tr>
+              <tr><td>③ コレクションの同期済みの層</td><td>② から受け取った行（① の写し）</td><td>メモリのみ。再読み込みで消え、また ② から取り直す</td></tr>
+              <tr><td>④ コレクションの楽観的な層</td><td>まだ確定していない自分の操作</td><td>確定または失敗するまでの一時的なもの</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h4>読み取り：コレクションのデータはどこから来るか</h4>
+        <p>
+          コレクションのデータは、元をたどれば <strong>PostgreSQL のデータ</strong>です。Electric は中継しているだけで、データを作り出してはいません。
+          また、Electric が送るのは「変わった」という<strong>通知ではなく、行のデータそのもの</strong>です（insert なら全列）。
+          クライアントは届いたデータをそのまま手元の写しに反映するので、通知を受けてから API に取りに行く、という往復がありません。
+        </p>
+
+        <h4>書き込み：新規エントリーや受付完了はどこへ行くか</h4>
+        <p>書き込みは <strong>Electric を通りません</strong>。tRPC サーバーが PostgreSQL に直接書き、その結果が読み取りの経路で全端末に戻ってきます。</p>
+        <div class="compare">
+          <div class="card card--accent c-client">
+            <h4>新規エントリー（受付端末で整理券を発行）</h4>
+            <ol>
+              <li><code>ReceptionComponent</code> → ユースケース <code>createEntry</code></li>
+              <li><code>entriesCollection.insert()</code>：④ に入り、画面にすぐ出る</li>
+              <li><code>onInsert</code> → <code>trpc.entry.insert</code>：サーバーが ① の <code>entry</code> に INSERT（整理券番号もここで決まる）</li>
+              <li>① の変更が ② を通って全端末の ③ に届く</li>
+              <li>自分の端末では ④ の仮の行が ③ の本物の行に置き換わる</li>
+            </ol>
+          </div>
+          <div class="card card--accent c-client">
+            <h4>受付完了（呼び出し端末で「完了」）</h4>
+            <ol>
+              <li><code>CallComponent</code> → ユースケース <code>markEntryDone</code></li>
+              <li><code>entryEventsCollection.insert()</code>：done イベントが ④ に入る</li>
+              <li><code>onInsert</code> → <code>trpc.entry.insertEvent</code>：サーバーが遷移ルールを確かめて ① の <code>entry_event</code> に INSERT</li>
+              <li>以降は新規エントリーと同じ（② を通って全端末の ③ に届く）</li>
+            </ol>
+          </div>
+        </div>
+        <div class="callout callout--note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/></svg>
+          <div>
+            <p>docker-compose.yml の Electric にある <code>ELECTRIC_WRITE_TO_PG_MODE</code> は、Electric の古いバージョン向けの設定の名残です。今の Electric（1.x）はクライアントからの書き込みを受け付けません。</p>
+          </div>
+        </div>
+
+        <h3 id="electric-replication">論理レプリケーションから Shape へ</h3>
+        <p>
+          Electric は PostgreSQL の<strong>論理レプリケーション</strong>に接続し、WAL（変更履歴）を読み取ります。
+          そして、クライアントが購読している <strong>Shape</strong>（「どのテーブルの、どの行か」という購読単位）ごとに変更をログとして並べ、HTTP で配信します。
+        </p>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 900 260" role="img" aria-labelledby="el-t">
+              <title id="el-t">PostgreSQL から Electric を経てブラウザに届く流れ</title>
+              <g class="c-pg">
+                <path class="node" d="M20 66 v120 a80 12 0 0 0 160 0 v-120"/>
+                <ellipse class="node" cx="100" cy="66" rx="80" ry="12"/>
+                <text x="100" y="106" text-anchor="middle" class="t-b">PostgreSQL</text>
+                <text x="100" y="126" text-anchor="middle" class="t-xs t-muted mono">wal_level=logical</text>
+                <rect class="box" x="40" y="142" width="120" height="34" rx="6"/>
+                <text x="100" y="158" text-anchor="middle" class="t-xs mono">WAL</text>
+                <text x="100" y="171" text-anchor="middle" class="t-xs t-muted">INSERT / UPDATE …</text>
+              </g>
+              <path class="edge-c c-pg" d="M180 126 H246" marker-end="url(#ah-pg)"/>
+              <text x="213" y="116" text-anchor="middle" class="t-xs t-muted">変更</text>
+              <text x="100" y="212" text-anchor="middle" class="t-xs t-muted">論理レプリケーションで</text>
+              <text x="100" y="228" text-anchor="middle" class="t-xs t-muted">Electric が購読</text>
+
+              <g class="c-electric">
+                <rect class="node" x="250" y="30" width="330" height="200" rx="14"/>
+                <text x="268" y="56" class="t-b">ElectricSQL</text>
+                <text x="566" y="56" text-anchor="end" class="t-xs t-muted mono">:3000 /v1/shape</text>
+                <rect class="box" x="268" y="74" width="294" height="62" rx="8"/>
+                <text x="282" y="96" class="t-xs t-b mono">Shape: table=entry</text>
+                <g class="mono t-xs">
+                  <rect x="282" y="106" width="44" height="20" rx="4" fill="var(--surface-2)" stroke="var(--line)"/><text x="304" y="120" text-anchor="middle" class="t-xs">#1</text>
+                  <rect x="332" y="106" width="44" height="20" rx="4" fill="var(--surface-2)" stroke="var(--line)"/><text x="354" y="120" text-anchor="middle" class="t-xs">#2</text>
+                  <rect x="382" y="106" width="44" height="20" rx="4" fill="var(--surface-2)" stroke="var(--line)"/><text x="404" y="120" text-anchor="middle" class="t-xs">…</text>
+                  <rect x="432" y="106" width="58" height="20" rx="4" fill="color-mix(in srgb, var(--c-electric) 20%, var(--surface))" stroke="var(--c-electric)"/><text x="461" y="120" text-anchor="middle" class="t-xs">#35 新</text>
+                </g>
+                <rect class="box" x="268" y="148" width="294" height="62" rx="8"/>
+                <text x="282" y="170" class="t-xs t-b mono">Shape: table=entry_event</text>
+                <g class="mono">
+                  <rect x="282" y="180" width="44" height="20" rx="4" fill="var(--surface-2)" stroke="var(--line)"/><text x="304" y="194" text-anchor="middle" class="t-xs">e1</text>
+                  <rect x="332" y="180" width="44" height="20" rx="4" fill="var(--surface-2)" stroke="var(--line)"/><text x="354" y="194" text-anchor="middle" class="t-xs">e2</text>
+                  <rect x="382" y="180" width="44" height="20" rx="4" fill="var(--surface-2)" stroke="var(--line)"/><text x="404" y="194" text-anchor="middle" class="t-xs">…</text>
+                </g>
+                <text x="500" y="196" class="t-xs t-muted">追記されていくログ</text>
+              </g>
+
+              <g class="c-client">
+                <rect class="node" x="680" y="30" width="204" height="56" rx="10"/><text x="782" y="54" text-anchor="middle" class="t-sm t-b">受付端末</text><text x="782" y="72" text-anchor="middle" class="t-xs t-muted">offset=…&amp;live=true</text>
+                <rect class="node" x="680" y="102" width="204" height="56" rx="10"/><text x="782" y="126" text-anchor="middle" class="t-sm t-b">表示端末</text><text x="782" y="144" text-anchor="middle" class="t-xs t-muted">offset=…&amp;live=true</text>
+                <rect class="node" x="680" y="174" width="204" height="56" rx="10"/><text x="782" y="198" text-anchor="middle" class="t-sm t-b">お客様スマホ</text><text x="782" y="216" text-anchor="middle" class="t-xs t-muted">offset=…&amp;live=true</text>
+              </g>
+              <path class="edge-c c-electric" d="M580 120 C630 120, 630 58, 676 58" marker-end="url(#ah-electric)"/>
+              <path class="edge-c c-electric" d="M580 130 H676" marker-end="url(#ah-electric)"/>
+              <path class="edge-c c-electric" d="M580 140 C630 140, 630 202, 676 202" marker-end="url(#ah-electric)"/>
+              <text x="628" y="252" text-anchor="middle" class="t-xs t-muted">HTTP（Caddy の /v1/* 経由）</text>
+            </svg>
+          </div>
+          <figcaption>図 2-2. Electric の役割 ― 1 回の DB 変更を、購読中のすべてのクライアントへ配る</figcaption>
+        </figure>
+
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>PostgreSQL 側のしくみ</th><th>このアプリでの値</th><th>役割</th></tr></thead>
+            <tbody>
+              <tr><td>パブリケーション</td><td><code>electric_publication_default</code></td><td>どのテーブルの変更を流すか。購読された <code>entry</code> と <code>entry_event</code> を Electric が自動で登録する</td></tr>
+              <tr><td>レプリケーションスロット</td><td><code>electric_slot_default</code>（<code>pgoutput</code>）</td><td>Electric がどこまで読んだかを PostgreSQL 側で覚えておく。Electric が止まっても、再起動後に続きから読める</td></tr>
+              <tr><td>WAL</td><td><code>wal_level=logical</code>（docker-compose.yml）</td><td>行単位の変更を論理レプリケーションで取り出せるようにする設定</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          Electric は受け取った変更を Shape ごとの<strong>ログ</strong>としてディスクに書き、ログ上の位置を <strong>offset</strong> で表します。
+          クライアントは「offset のどこまで受け取ったか」を覚えておき、その続きを HTTP で取りに行きます。
+          Electric はクライアントごとの状態を持たないので、端末が何台に増えても、同じログを読ませるだけで済みます。
+        </p>
+
+        <h3 id="electric-pipeline">変更が全端末に届くまで：3 つの区間</h3>
+        <p>
+          PostgreSQL でコミットされた変更がブラウザの画面に出るまでには、<strong>3 つの区間</strong>があります。
+          区間ごとに、通信のしかたと「どちらから動き始めるか」が違います。
+          図の値は、このアプリのローカル環境で PostgreSQL の状態（<code>pg_stat_replication</code> / <code>pg_replication_slots</code>）と Electric の応答を実際に確認したものです。
+        </p>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 900 330" role="img" aria-labelledby="pipe-t" style="min-width:720px">
+              <title id="pipe-t">PostgreSQL のコミットからブラウザの再描画までの 3 区間</title>
+              <!-- zones -->
+              <g class="c-pg"><rect class="zone" x="16" y="40" width="200" height="222" rx="12"/><text x="30" y="62" class="t-sm t-b" style="fill:var(--c-pg)">PostgreSQL</text></g>
+              <g class="c-electric"><rect class="zone" x="350" y="40" width="200" height="222" rx="12"/><text x="364" y="62" class="t-sm t-b" style="fill:var(--c-electric)">Electric</text></g>
+              <g class="c-client"><rect class="zone" x="684" y="40" width="200" height="222" rx="12"/><text x="698" y="62" class="t-sm t-b" style="fill:var(--c-client)">ブラウザ</text></g>
+              <text x="116" y="26" text-anchor="middle" class="t-xs t-muted">下から上へ</text>
+              <text x="450" y="26" text-anchor="middle" class="t-xs t-muted">上から下へ</text>
+              <text x="784" y="26" text-anchor="middle" class="t-xs t-muted">下から上へ</text>
+
+              <!-- PostgreSQL (bottom → top) -->
+              <g class="c-pg">
+                <rect class="node" x="36" y="76" width="160" height="44" rx="8"/><text x="116" y="95" text-anchor="middle" class="t-xs t-b">walsender</text><text x="116" y="110" text-anchor="middle" class="t-xs t-muted">pgoutput で行単位に解読</text>
+                <rect class="node" x="36" y="140" width="160" height="44" rx="8"/><text x="116" y="159" text-anchor="middle" class="t-xs t-b">WAL に記録</text><text x="116" y="174" text-anchor="middle" class="t-xs t-muted">wal_level=logical</text>
+                <rect class="node" x="36" y="204" width="160" height="44" rx="8"/><text x="116" y="223" text-anchor="middle" class="t-xs t-b">COMMIT</text><text x="116" y="238" text-anchor="middle" class="t-xs t-muted">tRPC の INSERT が確定</text>
+              </g>
+              <path class="edge" d="M116 204 V188" marker-end="url(#ah)"/>
+              <path class="edge" d="M116 140 V124" marker-end="url(#ah)"/>
+
+              <!-- Electric (top → bottom) -->
+              <g class="c-electric">
+                <rect class="node" x="370" y="76" width="160" height="44" rx="8"/><text x="450" y="95" text-anchor="middle" class="t-xs t-b">変更を受信</text><text x="450" y="110" text-anchor="middle" class="t-xs t-muted">トランザクション単位</text>
+                <rect class="node" x="370" y="140" width="160" height="44" rx="8"/><text x="450" y="159" text-anchor="middle" class="t-xs t-b">Shape ログに追記</text><text x="450" y="174" text-anchor="middle" class="t-xs t-muted">Shape ごとに振り分け</text>
+                <rect class="node" x="370" y="204" width="160" height="44" rx="8"/><text x="450" y="223" text-anchor="middle" class="t-xs t-b">保留中の応答を返す</text><text x="450" y="238" text-anchor="middle" class="t-xs t-muted">待っている全端末へ</text>
+              </g>
+              <path class="edge" d="M450 120 V136" marker-end="url(#ah)"/>
+              <path class="edge" d="M450 184 V200" marker-end="url(#ah)"/>
+
+              <!-- Browser (bottom → top) -->
+              <g class="c-client">
+                <rect class="node" x="704" y="76" width="160" height="44" rx="8"/><text x="784" y="95" text-anchor="middle" class="t-xs t-b">ライブクエリ → React</text><text x="784" y="110" text-anchor="middle" class="t-xs t-muted">差分を計算して再描画</text>
+                <rect class="node" x="704" y="140" width="160" height="44" rx="8"/><text x="784" y="159" text-anchor="middle" class="t-xs t-b">コレクション</text><text x="784" y="174" text-anchor="middle" class="t-xs t-muted">up-to-date で確定</text>
+                <rect class="node" x="704" y="204" width="160" height="44" rx="8"/><text x="784" y="223" text-anchor="middle" class="t-xs t-b">ShapeStream</text><text x="784" y="238" text-anchor="middle" class="t-xs t-muted">parser で型を変換</text>
+              </g>
+              <path class="edge" d="M784 204 V188" marker-end="url(#ah)"/>
+              <path class="edge" d="M784 140 V124" marker-end="url(#ah)"/>
+
+              <!-- section ① -->
+              <path class="edge-c c-pg" d="M196 98 H366" marker-end="url(#ah-pg)"/>
+              <text x="283" y="90" text-anchor="middle" class="t-xs t-b" style="fill:var(--c-pg)">① PG が押し出す</text>
+              <text x="283" y="114" text-anchor="middle" class="t-xs t-muted">レプリケーション接続</text>
+              <path class="edge dash" d="M370 162 H200" marker-end="url(#ah)"/>
+              <text x="283" y="156" text-anchor="middle" class="t-xs">受け取った位置を報告</text>
+              <text x="283" y="178" text-anchor="middle" class="t-xs t-muted mono">confirmed_flush_lsn</text>
+
+              <!-- section ② -->
+              <path class="edge-c c-electric" d="M530 226 H700" marker-end="url(#ah-electric)"/>
+              <text x="617" y="218" text-anchor="middle" class="t-xs t-b" style="fill:var(--c-electric)">② 応答を返す</text>
+              <text x="617" y="242" text-anchor="middle" class="t-xs t-muted">HTTP ロングポーリング</text>
+              <path class="edge dash" d="M704 162 H534" marker-end="url(#ah)"/>
+              <text x="617" y="156" text-anchor="middle" class="t-xs mono">GET …&amp;live=true</text>
+              <text x="617" y="178" text-anchor="middle" class="t-xs t-muted">先に送って待っておく</text>
+
+              <!-- section ③ label -->
+              <text x="784" y="278" text-anchor="middle" class="t-xs t-b" style="fill:var(--c-client)">③ メモリ内の処理</text>
+
+              <!-- evidence -->
+              <text x="116" y="300" text-anchor="middle" class="t-xs t-muted mono">electric_slot_default</text>
+              <text x="116" y="316" text-anchor="middle" class="t-xs t-muted mono">state = streaming</text>
+              <text x="450" y="300" text-anchor="middle" class="t-xs t-muted mono">offset 27263864_0</text>
+              <text x="450" y="316" text-anchor="middle" class="t-xs t-muted mono">= LSN 0/1A00378</text>
+              <text x="784" y="300" text-anchor="middle" class="t-xs t-muted">新しい offset を覚えて</text>
+              <text x="784" y="316" text-anchor="middle" class="t-xs t-muted">すぐ次の live=true を送る</text>
+            </svg>
+          </div>
+          <figcaption>図 2-3. 変更が届くまでの 3 区間 ― ① は PostgreSQL が押し出し、② はブラウザが先に頼んで待ち、③ はブラウザの中で処理する</figcaption>
+        </figure>
+
+        <h4>区間 ①：PostgreSQL → Electric（論理レプリケーション）</h4>
+        <ol>
+          <li><strong>コミットすると WAL に書かれる</strong>：PostgreSQL は、どの変更もまず WAL（先行書き込みログ）に書いてからコミットを完了します。本来は障害から復旧するためのしくみですが、<code>wal_level=logical</code> にすると「どのテーブルの、どの行が、どんな値になったか」を復元できる情報も記録されます。</li>
+          <li><strong>Electric は「レプリケーション接続」でつながっている</strong>：Electric は起動時に、ふつうの SQL 接続とは別にレプリケーション用の接続を張り、「スロット <code>electric_slot_default</code> の続きから、パブリケーション <code>electric_publication_default</code> の変更を流して」と頼みます。PostgreSQL 同士で複製を作るときと同じしくみで、Electric は<strong>PostgreSQL の複製先のふり</strong>をしています。</li>
+          <li><strong>PostgreSQL が解読して押し出す</strong>：PostgreSQL の中の <strong>walsender</strong> プロセスが WAL を読み、<code>pgoutput</code> プラグインで行単位の変更に解読して、つなぎっぱなしの接続で Electric へ<strong>押し出し（push）</strong>ます。届くのはトランザクション単位のまとまりで、コミットされたものだけです（ロールバックしたものは届かない）。</li>
+          <li><strong>Electric が受け取った位置を報告する</strong>：Electric は処理し終えた WAL の位置（LSN）を PostgreSQL に伝え、PostgreSQL はそれをスロットに記録します。Electric が止まっている間も、PostgreSQL は未送信の WAL を消さずに残すので、再起動後に続きから受け取れます。</li>
+        </ol>
+        <div class="code">
+          <div class="code__title">ローカル環境で確認した PostgreSQL の状態（抜粋）</div>
+<pre><span class="c">-- Electric との接続（レプリケーション接続）</span>
+<span class="k">SELECT</span> state, sent_lsn <span class="k">FROM</span> pg_stat_replication;
+ state     | sent_lsn
+ streaming | 0/1A004E8          <span class="c">← 変更を流し続けている</span>
+
+<span class="c">-- Electric 用のスロット</span>
+<span class="k">SELECT</span> slot_name, confirmed_flush_lsn <span class="k">FROM</span> pg_replication_slots;
+ slot_name             | confirmed_flush_lsn
+ electric_slot_default | 0/1A004F0      <span class="c">← Electric がここまで受け取った</span></pre>
+        </div>
+
+        <h4>Electric の中：Shape ログへの振り分け</h4>
+        <p>
+          Electric は届いた変更を、関係する Shape ごとに振り分けます（このアプリでは <code>entry</code> と <code>entry_event</code>）。
+          そして Electric のメッセージの形（<a href="#electric-messages">応答の中身</a>）に変換し、Shape ログの末尾に追記します。
+        </p>
+        <ul>
+          <li>メッセージの <code>txids</code> には、そのトランザクションの ID が入ります。このアプリが <code>awaitTxId</code> で照合しているのはこの値です。</li>
+          <li><strong>offset の前半は WAL 上の位置（LSN）</strong>です。実際の応答の <code>electric-offset: 27263864_0</code> の <code>27263864</code> を 16 進数にすると <code>0x1A00378</code>、PostgreSQL の表記では LSN <code>0/1A00378</code> になります。ブラウザが覚えている offset は、元をたどれば PostgreSQL の WAL の位置です。</li>
+        </ul>
+
+        <h4>区間 ②：Electric → ブラウザ（HTTP ロングポーリング）</h4>
+        <p>
+          ブラウザからは、すでに <code>GET …&amp;offset=27263864_0&amp;live=true</code> が届いていて、Electric はこれを保留しています。
+          Shape ログに変更が追記されると、Electric はその Shape で<strong>保留中のリクエストすべて</strong>に「その offset より後のログ ＋ <code>up-to-date</code>」を返します。
+          同じ offset で待っていた端末には<strong>まったく同じ応答</strong>が返るので、端末ごとに中身を作り分ける必要がなく、端末が増えても負担が増えにくい作りです。
+        </p>
+        <p>
+          この区間は区間 ① と逆で、<strong>ブラウザから動き始めて</strong>います。ブラウザが先に「次の変更をください」と頼んで待っているので、
+          サーバーは返事を返すだけで、見かけ上は押し出しているのと同じになります（くわしくは次の<a href="#electric-protocol">通信のしくみ</a>）。
+        </p>
+
+        <h4>区間 ③：ブラウザの中（メモリ内の処理）</h4>
+        <ol>
+          <li><strong>ShapeStream</strong>（<code>@electric-sql/client</code>）：応答の JSON を読み、<code>electric-schema</code> の型ごとに <code>parser</code> で値を変換して（<code>created_at</code> を Date に、など）購読者に渡します。新しい offset で<strong>すぐ次の <code>live=true</code></strong> を送ります。</li>
+          <li><strong>コレクション</strong>（<code>@tanstack/electric-db-collection</code>）：変更メッセージを同期済みの層に書き込み、<code>up-to-date</code> でまとめて確定します。<code>txids</code> を控えて、待っている <code>awaitTxId</code> を完了させます。</li>
+          <li><strong>ライブクエリ</strong>（TanStack DB）：コレクションの変更を受けて、JOIN の結果を差分だけ計算し直します。</li>
+          <li><strong>entry-states-store.ts → React</strong>：状態を 1 回だけ計算し直し、<code>useSyncExternalStore</code> 経由で React に知らせて、変わったコンポーネントだけを再描画します。</li>
+        </ol>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>区間</th><th>通信</th><th>どちらから動き始めるか</th><th>どこまで受け取ったかの管理</th></tr></thead>
+            <tbody>
+              <tr><td>① PostgreSQL → Electric</td><td>PostgreSQL のレプリケーションプロトコル（TCP でつなぎっぱなし）</td><td>PostgreSQL が押し出す</td><td>スロットの <code>confirmed_flush_lsn</code></td></tr>
+              <tr><td>② Electric → ブラウザ</td><td>HTTP GET（ロングポーリング）</td><td>ブラウザが先に頼んで待つ</td><td>ブラウザが覚えている <code>offset</code></td></tr>
+              <tr><td>③ ブラウザの中</td><td>メモリ内の関数呼び出し</td><td>応答の到着</td><td>コレクションの同期済みの層</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>どの区間も「どこまで受け取ったか」を<strong>位置</strong>で管理しているので、途中で接続が切れても、続きから取りこぼしなく受け取れます。</p>
+
+        <h3 id="electric-protocol">通信のしくみ：HTTP のロングポーリング</h3>
+        <p>
+          Electric との通信は WebSocket ではなく、<strong>ふつうの HTTP GET の繰り返し</strong>です。
+          クライアントライブラリ（<code>@electric-sql/client</code> の <code>ShapeStream</code>）が、次の 4 段階のやり取りを自動で行います。
+          下の図の URL やヘッダーの値は、このアプリのローカル環境で <code>entry_event</code> の Shape を実際に取得したときのものです。
+        </p>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 900 520" role="img" aria-labelledby="sp-t" style="min-width:760px">
+              <title id="sp-t">Shape の購読プロトコル（初回・追いつき・ライブ）</title>
+              <g style="fill:color-mix(in srgb, var(--ink) 3.5%, transparent)">
+                <rect x="8" y="62" width="884" height="98" rx="8"/>
+                <rect x="8" y="168" width="884" height="98" rx="8"/>
+                <rect x="8" y="274" width="884" height="120" rx="8"/>
+                <rect x="8" y="402" width="884" height="106" rx="8"/>
+              </g>
+              <g class="t-xs">
+                <text x="18" y="84" class="t-xs t-b">① 初回</text><text x="18" y="98" class="t-xs t-muted">スナップショット</text>
+                <text x="18" y="190" class="t-xs t-b">② 追いつき</text><text x="18" y="204" class="t-xs t-muted">catch-up</text>
+                <text x="18" y="296" class="t-xs t-b">③ ライブ</text><text x="18" y="310" class="t-xs t-muted">変更なし</text>
+                <text x="18" y="424" class="t-xs t-b">④ ライブ</text><text x="18" y="438" class="t-xs t-muted">変更あり</text>
+              </g>
+              <g class="c-client"><rect class="node" x="100" y="12" width="140" height="40" rx="8"/><text x="170" y="30" text-anchor="middle" class="t-sm t-b">ブラウザ</text><text x="170" y="45" text-anchor="middle" class="t-xs t-muted mono">ShapeStream</text></g>
+              <g class="c-electric"><rect class="node" x="730" y="12" width="140" height="40" rx="8"/><text x="800" y="30" text-anchor="middle" class="t-sm t-b">Electric</text><text x="800" y="45" text-anchor="middle" class="t-xs t-muted mono">/v1/shape</text></g>
+              <path class="lifeline" d="M170 52 V508 M800 52 V508"/>
+              <rect class="act c-electric" x="795" y="304" width="10" height="60" rx="2"/>
+              <rect class="act c-electric" x="795" y="432" width="10" height="44" rx="2"/>
+
+              <!-- ① -->
+              <path class="edge-c c-client" d="M170 92 H796" marker-end="url(#ah-client)"/>
+              <text x="485" y="86" text-anchor="middle" class="t-xs mono">GET /v1/shape?table=entry_event&amp;offset=-1</text>
+              <path class="edge dash" d="M800 130 H174" marker-end="url(#ah)"/>
+              <text x="485" y="124" text-anchor="middle" class="t-xs">200　スナップショット（全行を insert × 15 で）＋ snapshot-end</text>
+              <text x="485" y="148" text-anchor="middle" class="t-xs t-muted mono">electric-handle: 954887-1795348511425208　electric-offset: 0_0</text>
+
+              <!-- ② -->
+              <path class="edge-c c-client" d="M170 198 H796" marker-end="url(#ah-client)"/>
+              <text x="485" y="192" text-anchor="middle" class="t-xs mono">GET …&amp;handle=954887-1795348511425208&amp;offset=0_0</text>
+              <path class="edge dash" d="M800 236 H174" marker-end="url(#ah)"/>
+              <text x="485" y="230" text-anchor="middle" class="t-xs">200　スナップショット後の変更（insert × 8、txids 付き）＋ up-to-date</text>
+              <text x="485" y="254" text-anchor="middle" class="t-xs t-muted mono">electric-offset: 27263864_0　electric-up-to-date</text>
+
+              <!-- ③ -->
+              <path class="edge-c c-client" d="M170 304 H791" marker-end="url(#ah-client)"/>
+              <text x="485" y="298" text-anchor="middle" class="t-xs mono">GET …&amp;offset=27263864_0&amp;live=true</text>
+              <rect x="625" y="314" width="160" height="34" rx="6" class="box"/>
+              <text x="705" y="328" text-anchor="middle" class="t-xs">変更が来るまで保留</text>
+              <text x="705" y="342" text-anchor="middle" class="t-xs t-muted">（最大 20 秒）</text>
+              <path class="edge dash" d="M795 364 H174" marker-end="url(#ah)"/>
+              <text x="400" y="358" text-anchor="middle" class="t-xs">200（約 20 秒後）　up-to-date だけ</text>
+              <text x="485" y="382" text-anchor="middle" class="t-xs t-muted mono">electric-cursor: 66965720（次のリクエストに cursor として付ける）</text>
+
+              <!-- ④ -->
+              <path class="edge-c c-client" d="M170 432 H791" marker-end="url(#ah-client)"/>
+              <text x="485" y="426" text-anchor="middle" class="t-xs mono">GET …&amp;offset=27263864_0&amp;live=true&amp;cursor=66965720</text>
+              <path class="edge-c c-pg" d="M886 452 H809" marker-end="url(#ah-pg)"/>
+              <text x="848" y="446" text-anchor="middle" class="t-xs t-muted">PG でコミット</text>
+              <path class="edge-c c-electric" d="M795 476 H174" marker-end="url(#ah-electric)"/>
+              <text x="485" y="470" text-anchor="middle" class="t-xs" style="fill:var(--c-electric)">200（すぐに）　insert（txids 付き）＋ up-to-date</text>
+              <text x="485" y="494" text-anchor="middle" class="t-xs t-muted">新しい electric-offset で ③④ を繰り返す</text>
+            </svg>
+          </div>
+          <figcaption>図 2-4. Shape の購読 ― 最初に全件を取り、その後は「次の変更が来るまで待つ」リクエストをつなぎ続ける</figcaption>
+        </figure>
+        <ul>
+          <li><strong>① 初回</strong>：<code>offset=-1</code>（最初から）で取得すると、Shape を作った時点のテーブルの全行（スナップショット）が <code>insert</code> メッセージとして返り、最後に <code>snapshot-end</code> が付きます。応答ヘッダーの <code>electric-handle</code> がこの Shape の ID、<code>electric-offset</code> が次に読む位置です。</li>
+          <li><strong>② 追いつき</strong>：受け取った handle と offset で続きを取得します。スナップショットを作った後にコミットされた変更が、ログからまとめて届きます。最後に<code>up-to-date</code>（ここまでで最新）が付きます。TanStack DB はこの <code>up-to-date</code> を受け取った時点でコレクションを ready にします。</li>
+          <li><strong>③ ライブ（変更なし）</strong>：<code>live=true</code> を付けると、Electric は新しい変更が来るまで応答を保留します。20 秒たっても変更がなければ、<code>up-to-date</code> だけを返します。</li>
+          <li><strong>④ ライブ（変更あり）</strong>：保留中に PostgreSQL でコミットがあると、Electric はその場で応答を返します。クライアントは新しい offset ですぐ次の <code>live=true</code> を送るので、<strong>常に 1 本のリクエストが待ち受けている</strong>状態が続きます。これが「サブスクライブ（購読）」の正体です。</li>
+        </ul>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>クエリパラメータ</th><th>意味</th></tr></thead>
+            <tbody>
+              <tr><td><code>table</code></td><td>同期するテーブル。このアプリでは <code>entry</code> と <code>entry_event</code>（コレクションの <code>shapeOptions.params</code> で指定）</td></tr>
+              <tr><td><code>offset</code></td><td>Shape ログのどこまで受け取ったか。<code>-1</code> は最初から</td></tr>
+              <tr><td><code>handle</code></td><td>Shape の ID。① の応答ヘッダーで受け取り、以降のリクエストに付ける</td></tr>
+              <tr><td><code>live</code></td><td><code>true</code> でライブモード（変更が来るまで保留する）。<code>up-to-date</code> を受け取ってから付ける</td></tr>
+              <tr><td><code>cursor</code></td><td>ライブ応答の <code>electric-cursor</code> の値。キャッシュ（CDN など）に古い応答を返させないための値</td></tr>
+              <tr><td><code>where</code> / <code>columns</code></td><td>行と列の絞り込み。このアプリでは使っていない（全行・全列を同期）</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="electric-messages">応答の中身：メッセージとヘッダー</h3>
+        <p>応答の本文は<strong>メッセージの JSON 配列</strong>です。行の変更を表す「変更メッセージ」と、同期の区切りを表す「制御メッセージ」の 2 種類があります。</p>
+        <div class="code">
+          <div class="code__title">② 追いつきの応答（一部・実際の値）</div>
+<pre>[
+  {
+    <span class="s">"headers"</span>: {
+      <span class="s">"operation"</span>: <span class="s">"insert"</span>,                <span class="c">// insert / update / delete</span>
+      <span class="s">"relation"</span>: [<span class="s">"public"</span>, <span class="s">"entry_event"</span>],
+      <span class="s">"txids"</span>: [<span class="t">813</span>],                       <span class="c">// この変更をコミットしたトランザクション ID</span>
+      <span class="s">"lsn"</span>: <span class="s">"27243560"</span>, <span class="s">"op_position"</span>: <span class="t">0</span>, <span class="s">"last"</span>: <span class="k">true</span>
+    },
+    <span class="s">"key"</span>: <span class="s">"\"public\".\"entry_event\"/\"5101dbf2-…\""</span>,
+    <span class="s">"value"</span>: {                                <span class="c">// 行の値（すべて文字列で届き、型変換はクライアント側）</span>
+      <span class="s">"id"</span>: <span class="s">"5101dbf2-…"</span>, <span class="s">"entry_id"</span>: <span class="s">"20dacb30-…"</span>, <span class="s">"type"</span>: <span class="s">"created"</span>,
+      <span class="s">"actor"</span>: <span class="s">"staff"</span>, <span class="s">"device_id"</span>: <span class="k">null</span>, <span class="s">"created_at"</span>: <span class="s">"2026-11-22 14:29:00.2079+00"</span>
+    }
+  },
+  <span class="c">/* … 変更メッセージが続く … */</span>
+  { <span class="s">"headers"</span>: { <span class="s">"control"</span>: <span class="s">"up-to-date"</span> } }   <span class="c">// 制御メッセージ：ここまでで最新</span>
+]</pre>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>制御メッセージ</th><th>意味</th><th>TanStack DB 側の扱い</th></tr></thead>
+            <tbody>
+              <tr><td><code>snapshot-end</code></td><td>スナップショットの終わり。どのトランザクションまで含むか（<code>xmin</code> / <code>xmax</code>）を示す</td><td>スナップショットの範囲として記録する</td></tr>
+              <tr><td><code>up-to-date</code></td><td>ここまでで最新に追いついた</td><td>それまでの変更をまとめて確定（コミット）する。初回はここでコレクションが ready になる</td></tr>
+              <tr><td><code>must-refetch</code></td><td>Shape を作り直したので最初から取り直してほしい</td><td>コレクションの同期データを空にして、新しい handle で ① からやり直す</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>応答ヘッダー</th><th>意味</th></tr></thead>
+            <tbody>
+              <tr><td><code>electric-handle</code></td><td>Shape の ID</td></tr>
+              <tr><td><code>electric-offset</code></td><td>この応答の最後の位置。次のリクエストの <code>offset</code> になる</td></tr>
+              <tr><td><code>electric-schema</code></td><td>列の型（例：<code>created_at</code> は <code>timestamptz</code>）。クライアントはこの型名で <code>parser</code> を選び、文字列を Date などに変換する</td></tr>
+              <tr><td><code>electric-up-to-date</code></td><td>最新に追いついている応答に付く</td></tr>
+              <tr><td><code>electric-cursor</code></td><td>ライブ応答に付く。次のリクエストの <code>cursor</code> になる</td></tr>
+              <tr><td><code>cache-control</code></td><td>① は <code>max-age=604800</code>（1 週間）、② は 60 秒、ライブは 5 秒。同じ offset の応答は内容が変わらないので、CDN やブラウザのキャッシュで使い回せる</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="electric-resilience">購読が続くしくみ：再接続・作り直し・一時停止</h3>
+        <div class="cards cards--2">
+          <div class="card">
+            <h4><span class="tag c-electric">タイムアウト</span>20 秒で区切ってつなぎ直す</h4>
+            <p>1 本の HTTP リクエストを開きっぱなしにしないため、変更がなくても 20 秒で応答が返ります。クライアントはすぐ次を送るので、利用者から見ると途切れません。</p>
+          </div>
+          <div class="card">
+            <h4><span class="tag c-warn">通信エラー</span>待ち時間を延ばしながら再試行</h4>
+            <p>サーバーに届かないときは、1 秒 → 2 秒 → 4 秒 … と待ち時間を 2 倍にしながら（最大 32 秒）<strong>無期限に</strong>再試行します。復旧すれば、覚えている offset の続きから受け取るので、取りこぼしはありません。</p>
+          </div>
+          <div class="card">
+            <h4><span class="tag c-danger">409</span>Shape の作り直し</h4>
+            <p>Electric 側で Shape が作り直されると、古い handle へのリクエストに 409 と新しい handle が返ります（<code>must-refetch</code>）。コレクションはデータを空にして ① から取り直します。</p>
+          </div>
+          <div class="card">
+            <h4><span class="tag c-client">タブ</span>見えていない間は一時停止</h4>
+            <p>ブラウザのタブが非表示になると（<code>document.hidden</code>）購読を一時停止し、表示されたら続きから再開します。表示端末のように常に前面に出している画面では止まりません。</p>
+          </div>
+        </div>
+        <div class="callout callout--note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/></svg>
+          <div>
+            <p>
+              クライアントには、ライブモードを <strong>SSE（Server-Sent Events）</strong>で受け取るオプション（<code>liveSse</code>）もありますが、既定はロングポーリングで、このアプリもロングポーリングを使っています。
+              コレクションごとに 1 本ずつ購読するため、1 つのタブから <code>entry</code> と <code>entry_event</code> の 2 本のリクエストが常に待ち受けています（Caddy の HTTPS は HTTP/2 なので、1 つの接続にまとめて送られます）。
+            </p>
+          </div>
+        </div>
+
+        <h3 id="electric-to-collection">コレクションが変更を受け取るまで</h3>
+        <p>
+          <code>electricCollectionOptions</code> は、コレクションの同期が始まると <code>ShapeStream</code> を作り、<code>stream.subscribe()</code> でメッセージを受け取ります。
+          届いたメッセージは、次のようにコレクションの<strong>同期済みの層</strong>へ反映されます。
+        </p>
+        <div class="flow">
+          <div class="c-electric"><b>受信</b><code>ShapeStream</code> が 1 回の応答に含まれるメッセージの配列をまとめて渡す</div>
+          <div class="c-db"><b>書き込み</b>変更メッセージを同期トランザクションに書き込む（<code>begin</code> → <code>write</code>）。<code>txids</code> も控えておく</div>
+          <div class="c-db"><b>確定</b><code>up-to-date</code> が来たらまとめてコミットする。途中の状態が画面に出ることはない</div>
+          <div class="c-domain"><b>通知</b>コレクションの変更がライブクエリに伝わり、差分だけ再計算される</div>
+          <div class="c-server"><b>照合</b>控えた txid で、待っている <code>awaitTxId(txid)</code> を resolve する</div>
+        </div>
+        <ul>
+          <li>同期が始まるのは、コレクションを使うライブクエリなどが購読したときです（既定の同期モード <code>eager</code> では、そのとき Shape の全行を取得します）。</li>
+          <li>同期済みの層は Electric から届いたデータだけで作られ、楽観的な変更はその上に重ねて見せているだけです（<a href="#db-collection">03 コレクション</a>）。</li>
+        </ul>
+
+
+        <h3 id="electric-in-app">このアプリでの設定</h3>
+        <div class="code">
+          <div class="code__title">app/infrastructure/database/client.ts</div>
+<pre><span class="k">export const</span> electricConfig = {
+  url: clientEnv.VITE_ELECTRIC_URL,    <span class="c">// 例: https://192.168.x.x/v1/shape（Caddy が Electric へ転送）</span>
+  parser: {
+    timestamp: parsePgTimestamp,   <span class="c">// タイムゾーンなしの値は UTC として扱う</span>
+    timestamptz: parsePgTimestamp, <span class="c">// "2026-11-22 10:02:03.625961+00" → ISO 8601 に整形して Date に</span>
+  },
+};</pre>
+        </div>
+        <ul>
+          <li>Electric は Docker で起動し、<code>AUTH_MODE: insecure</code> / <code>ELECTRIC_INSECURE: "true"</code>（開発用・認証なし）で動いています。</li>
+          <li>ブラウザからは Caddy の <code>/v1/*</code> を経由してアクセスするため、HTTPS で同じオリジンから購読できます。</li>
+        </ul>
+
+        <div class="callout">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
+          <div>
+            <div class="callout__title">Electric は「書き込み」をしない</div>
+            <p>Electric は PostgreSQL → クライアントの<strong>一方向</strong>の同期だけを担当します。クライアントからの書き込みは、アプリ自身の API（このアプリでは tRPC）で PostgreSQL に書き、その結果が Electric 経由で戻ってくる、という設計になります。</p>
+          </div>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="tanstack-db"><span class="num">03</span>TanStack DB のしくみ</h2>
+        <h3 id="db-collection">コレクション：同期データ ＋ 楽観的な変更</h3>
+        <p>
+          コレクションは、型付きのオブジェクトの集まりです。データの入り口（同期元）は差し替え可能で、このアプリでは Electric を使う
+          <code>electricCollectionOptions</code> を使っています。画面から見えるのは、<strong>同期済みのデータに、まだ確定していない楽観的な変更を重ねたもの</strong>です。
+        </p>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 880 250" role="img" aria-labelledby="col-t">
+              <title id="col-t">コレクションの 2 層構造</title>
+              <g class="c-db">
+                <rect class="zone" x="16" y="16" width="560" height="220" rx="14"/>
+                <text x="32" y="40" class="t-b">entriesCollection</text>
+              </g>
+              <!-- optimistic layer -->
+              <g transform="skewX(-14)">
+                <rect x="110" y="62" width="420" height="58" rx="8" fill="color-mix(in srgb, var(--c-db) 14%, var(--surface))" stroke="var(--c-db)" stroke-dasharray="5 4"/>
+              </g>
+              <text x="110" y="86" class="t-sm t-b" style="fill:var(--c-db)">楽観的な変更（未確定）</text>
+              <text x="110" y="106" class="t-xs t-muted">insert した直後の #35 など。確定したら消え、失敗したら取り消される</text>
+              <g transform="skewX(-14)">
+                <rect x="150" y="146" width="420" height="58" rx="8" fill="color-mix(in srgb, var(--c-electric) 12%, var(--surface))" stroke="var(--c-electric)"/>
+              </g>
+              <text x="150" y="170" class="t-sm t-b" style="fill:var(--c-electric)">同期済みのデータ</text>
+              <text x="150" y="190" class="t-xs t-muted">Electric の Shape から届いた行（#1 〜 #34）</text>
+
+              <path class="edge-c c-electric" d="M720 176 H600" marker-end="url(#ah-electric)"/>
+              <g class="c-electric"><rect class="node" x="724" y="150" width="140" height="52" rx="10"/><text x="794" y="174" text-anchor="middle" class="t-sm t-b">Electric</text><text x="794" y="191" text-anchor="middle" class="t-xs t-muted">Shape</text></g>
+              <path class="edge-c c-db" d="M720 92 H600" marker-end="url(#ah-db)"/>
+              <g class="c-client"><rect class="node" x="724" y="66" width="140" height="52" rx="10"/><text x="794" y="90" text-anchor="middle" class="t-sm t-b">collection</text><text x="794" y="107" text-anchor="middle" class="t-xs t-muted mono">.insert()</text></g>
+              <text x="296" y="230" text-anchor="middle" class="t-xs t-muted">画面に見えるのは「同期済み ＋ 楽観的な変更」を重ねた結果</text>
+            </svg>
+          </div>
+          <figcaption>図 3-1. コレクションの見え方 ― 2 つの層を重ねたものがライブクエリの入力になる</figcaption>
+        </figure>
+
+        <h3 id="db-live-query">ライブクエリ：差分だけ再計算する</h3>
+        <p>
+          ライブクエリは SQL に似たクエリビルダーで、複数のコレクションの JOIN・絞り込み・並べ替えを書けます。
+          コンポーネントの中で作る <code>useLiveQuery</code> と、モジュールで作って共有する <code>createLiveQueryCollection</code> があり、このアプリは後者で 1 つだけ作っています。
+          結果は「一度計算して終わり」ではなく、元のコレクションに変更が入るたびに<strong>影響を受ける部分だけ</strong>が再計算されます（差分データフロー）。
+        </p>
+        <div class="code">
+          <div class="code__title">app/query/entry/entry-states-store.ts（共有ライブクエリ）</div>
+<pre><span class="k">const</span> joinedEntryEventsQuery = <span class="f">createLiveQueryCollection</span>({
+  id: <span class="s">'joined-entry-events'</span>,
+  query: (query) =&gt;
+    query
+      .<span class="f">from</span>({ entry: entriesCollection })
+      .<span class="f">leftJoin</span>({ event: entryEventsCollection },
+        ({ entry, event }) =&gt; <span class="f">eq</span>(entry.id, event.entry_id))   <span class="c">// 受付 × イベント</span>
+      .<span class="f">select</span>(({ entry, event }) =&gt; ({
+        id: entry.id, ticketNumber: entry.number, token: entry.public_token,
+        eventType: event?.type, eventCreatedAt: event?.created_at, <span class="c">/* … */</span>
+      }))
+      .<span class="f">orderBy</span>(({ entry }) =&gt; entry.number, <span class="s">'asc'</span>),
+});</pre>
+        </div>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 880 200" role="img" aria-labelledby="lq-t">
+              <title id="lq-t">1 件のイベント追加がライブクエリから画面まで伝わる流れ</title>
+              <g class="c-electric"><rect class="node" x="16" y="70" width="150" height="60" rx="10"/><text x="91" y="96" text-anchor="middle" class="t-sm t-b">called イベント</text><text x="91" y="114" text-anchor="middle" class="t-xs t-muted">1 行が届く</text></g>
+              <g class="c-db"><rect class="node" x="210" y="70" width="150" height="60" rx="10"/><text x="285" y="96" text-anchor="middle" class="t-sm t-b">entryEvents</text><text x="285" y="114" text-anchor="middle" class="t-xs t-muted">コレクションに追加</text></g>
+              <g class="c-domain"><rect class="node" x="404" y="70" width="170" height="60" rx="10"/><text x="489" y="96" text-anchor="middle" class="t-sm t-b">leftJoin の差分</text><text x="489" y="114" text-anchor="middle" class="t-xs t-muted">該当受付の行だけ増える</text></g>
+              <g class="c-client"><rect class="node" x="618" y="70" width="246" height="60" rx="10"/><text x="741" y="96" text-anchor="middle" class="t-sm t-b">フック → 再描画</text><text x="741" y="114" text-anchor="middle" class="t-xs t-muted">状態を計算し直し、画面を更新</text></g>
+              <path class="edge-c c-electric" d="M166 100 H206" marker-end="url(#ah-electric)"/>
+              <path class="edge-c c-db" d="M360 100 H400" marker-end="url(#ah-db)"/>
+              <path class="edge-c c-domain" d="M574 100 H614" marker-end="url(#ah-domain)"/>
+              <text x="440" y="164" text-anchor="middle" class="t-xs t-muted">全件を取り直すのではなく、変わった行の影響だけを伝える</text>
+            </svg>
+          </div>
+          <figcaption>図 3-2. ライブクエリの差分更新</figcaption>
+        </figure>
+        <p>
+          このアプリでは JOIN の結果を受付ごとにまとめ、<code>calculateCurrentState()</code> で状態を計算しています。この計算は変更 1 回につき 1 回だけ行い、結果を <code>useSyncExternalStore</code> で全フックに配ります。
+          JOIN と並べ替えまでは TanStack DB の差分計算、そこから先（状態の計算・統計）は JavaScript 側の計算という分担です（詳しくは<a href="tech-materialized-view.html">マテリアライズドビュー解説</a>）。
+        </p>
+
+        <h3 id="db-transaction">楽観的更新とトランザクション</h3>
+        <p>
+          <code>collection.insert()</code> を呼ぶと<strong>トランザクション</strong>が作られ、変更はすぐに楽観的な層に入ります。
+          その後、コレクションに設定した <code>onInsert</code>（ミューテーションハンドラー）が実行され、その結果でトランザクションの行き先が決まります。
+        </p>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 880 210" role="img" aria-labelledby="tx-t">
+              <title id="tx-t">トランザクションの状態遷移</title>
+              <circle cx="30" cy="100" r="8" fill="var(--ink)"/>
+              <path class="edge" d="M38 100 H86" marker-end="url(#ah)"/>
+              <text x="62" y="88" text-anchor="middle" class="t-xs t-muted mono">insert()</text>
+              <g class="c-warn"><rect class="node" x="90" y="72" width="150" height="56" rx="28"/><text x="165" y="96" text-anchor="middle" class="t-b mono">pending</text><text x="165" y="114" text-anchor="middle" class="t-xs t-muted">画面に即反映</text></g>
+              <path class="edge" d="M240 100 H316" marker-end="url(#ah)"/>
+              <text x="278" y="88" text-anchor="middle" class="t-xs t-muted">onInsert 開始</text>
+              <g class="c-client"><rect class="node" x="320" y="72" width="170" height="56" rx="28"/><text x="405" y="96" text-anchor="middle" class="t-b mono">persisting</text><text x="405" y="114" text-anchor="middle" class="t-xs t-muted">tRPC → awaitTxId</text></g>
+              <g class="c-ok"><rect class="node" x="640" y="20" width="200" height="56" rx="28"/><text x="740" y="44" text-anchor="middle" class="t-b mono">completed</text><text x="740" y="62" text-anchor="middle" class="t-xs t-muted">楽観値 → 同期値へ</text></g>
+              <g class="c-danger"><rect class="node" x="640" y="124" width="200" height="56" rx="28"/><text x="740" y="148" text-anchor="middle" class="t-b mono">failed</text><text x="740" y="166" text-anchor="middle" class="t-xs t-muted">楽観値をロールバック</text></g>
+              <path class="edge" d="M490 92 C560 92, 570 48, 636 48" marker-end="url(#ah)" style="stroke:var(--ok)"/>
+              <text x="560" y="58" text-anchor="middle" class="t-xs">onInsert が resolve</text>
+              <path class="edge" d="M490 108 C560 108, 570 152, 636 152" marker-end="url(#ah)" style="stroke:var(--danger)"/>
+              <text x="560" y="160" text-anchor="middle" class="t-xs">onInsert が throw</text>
+              <text x="740" y="200" text-anchor="middle" class="t-xs t-muted mono">tx.when('settled') はここで resolve / reject</text>
+            </svg>
+          </div>
+          <figcaption>図 3-3. トランザクションの状態 ― <code>pending → persisting → completed | failed</code></figcaption>
+        </figure>
+        <p>
+          リポジトリ実装（<code>electric-entry-repository.ts</code> など）は <code>await tx.when('settled')</code> で、このトランザクションの完了を待っています。
+          成功すれば resolve、失敗すれば元のエラーで reject されるため、ユースケースの <code>try / catch</code> でエラーを画面に伝えられます。
+        </p>
+
+        <!-- ===================================================== -->
+        <h2 id="combine"><span class="num">04</span>2 つをつなぐ：txid による確定待ち</h2>
+        <p>
+          楽観的な変更は「いつ消すか」が重要です。サーバーへの書き込みが終わった瞬間に消すと、
+          その変更がまだ Electric から届いていない場合、<strong>一瞬だけデータが消えて画面がちらつきます</strong>。
+          これを防ぐのが <strong>txid（トランザクション ID）による照合</strong>です。
+        </p>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 900 330" role="img" aria-labelledby="txid-t" style="min-width:720px">
+              <title id="txid-t">txid を待つ場合と待たない場合のタイムライン比較</title>
+              <!-- time axis -->
+              <path class="edge" d="M160 300 H880" marker-end="url(#ah)"/>
+              <text x="884" y="318" text-anchor="end" class="t-xs t-muted">時間 →</text>
+              <g class="t-xs mono">
+                <path d="M200 52 V296 M420 52 V296 M640 52 V296" stroke="var(--line-strong)" stroke-dasharray="3 4"/>
+                <text x="200" y="318" text-anchor="middle" class="t-xs">t0 insert()</text>
+                <text x="420" y="318" text-anchor="middle" class="t-xs">t1 tRPC が txid を返す</text>
+                <text x="640" y="318" text-anchor="middle" class="t-xs">t2 Electric が同じ txid を配信</text>
+              </g>
+
+              <!-- good -->
+              <text x="16" y="44" class="t-sm t-b" style="fill:var(--ok)">✓ txid を待つ（このアプリ）</text>
+              <text x="16" y="84" class="t-xs t-muted">楽観的な層</text>
+              <text x="16" y="114" class="t-xs t-muted">同期済みの層</text>
+              <text x="16" y="144" class="t-xs t-muted">画面</text>
+              <rect x="200" y="70" width="440" height="20" rx="4" fill="color-mix(in srgb, var(--c-db) 22%, var(--surface))" stroke="var(--c-db)"/>
+              <text x="420" y="84" text-anchor="middle" class="t-xs" style="fill:var(--c-db)">#35（楽観的）― awaitTxId で保持し続ける</text>
+              <rect x="640" y="100" width="240" height="20" rx="4" fill="color-mix(in srgb, var(--c-electric) 20%, var(--surface))" stroke="var(--c-electric)"/>
+              <text x="760" y="114" text-anchor="middle" class="t-xs" style="fill:var(--c-electric)">#35（同期済み）</text>
+              <rect x="200" y="130" width="680" height="20" rx="4" fill="color-mix(in srgb, var(--ok) 18%, var(--surface))" stroke="var(--ok)"/>
+              <text x="540" y="144" text-anchor="middle" class="t-xs" style="fill:var(--ok)">#35 が途切れず表示される</text>
+
+              <!-- bad -->
+              <text x="16" y="186" class="t-sm t-b" style="fill:var(--danger)">✗ txid を待たない場合</text>
+              <text x="16" y="224" class="t-xs t-muted">楽観的な層</text>
+              <text x="16" y="254" class="t-xs t-muted">同期済みの層</text>
+              <text x="16" y="284" class="t-xs t-muted">画面</text>
+              <rect x="200" y="210" width="220" height="20" rx="4" fill="color-mix(in srgb, var(--c-db) 22%, var(--surface))" stroke="var(--c-db)"/>
+              <text x="310" y="224" text-anchor="middle" class="t-xs" style="fill:var(--c-db)">#35（楽観的）</text>
+              <rect x="640" y="240" width="240" height="20" rx="4" fill="color-mix(in srgb, var(--c-electric) 20%, var(--surface))" stroke="var(--c-electric)"/>
+              <text x="760" y="254" text-anchor="middle" class="t-xs" style="fill:var(--c-electric)">#35（同期済み）</text>
+              <rect x="200" y="270" width="220" height="20" rx="4" fill="color-mix(in srgb, var(--ok) 18%, var(--surface))" stroke="var(--ok)"/>
+              <rect x="420" y="270" width="220" height="20" rx="4" fill="color-mix(in srgb, var(--danger) 16%, var(--surface))" stroke="var(--danger)" stroke-dasharray="4 3"/>
+              <text x="530" y="284" text-anchor="middle" class="t-xs t-b" style="fill:var(--danger)">消える（ちらつき）</text>
+              <rect x="640" y="270" width="240" height="20" rx="4" fill="color-mix(in srgb, var(--ok) 18%, var(--surface))" stroke="var(--ok)"/>
+            </svg>
+          </div>
+          <figcaption>図 4-1. txid による確定待ち ― 同期済みの層に同じ変更が入るまで、楽観的な値を消さない</figcaption>
+        </figure>
+
+        <h3 id="txid-how">txid の受け渡し</h3>
+        <div class="flow">
+          <div class="c-server"><b>サーバー</b>INSERT と同じトランザクションで <code>pg_current_xact_id()</code> を取得して返す</div>
+          <div class="c-pg"><b>PostgreSQL</b>コミットすると WAL にそのトランザクション ID が記録される</div>
+          <div class="c-electric"><b>Electric</b>変更メッセージのヘッダーに <code>txids</code> を付けて配信する</div>
+          <div class="c-db"><b>コレクション</b><code>awaitTxId(txid)</code> が一致する txid を見つけたら resolve</div>
+        </div>
+        <div class="code">
+          <div class="code__title">server/routers/entry.ts（insert の抜粋）</div>
+<pre><span class="k">const</span> inserted = <span class="k">await</span> <span class="f">withTransaction</span>(ctx.pool, <span class="k">async</span> (client) =&gt; {
+  <span class="k">await</span> client.<span class="f">query</span>(<span class="s">'SELECT id FROM queue WHERE id = $1 FOR UPDATE'</span>, [queue_id]); <span class="c">// 採番を直列化</span>
+  <span class="k">const</span> result = <span class="k">await</span> client.<span class="f">query</span>(
+    <span class="s">`INSERT INTO entry (id, queue_id, number, party_size, public_token, created_at)
+     SELECT $1, $2, COALESCE(MAX(number), 0) + 1, $3, $4, now() FROM entry WHERE queue_id = $2
+     </span><span class="hl s">RETURNING number, pg_current_xact_id()::text AS txid</span><span class="s">`</span>,
+    [id, queue_id, party_size, public_token],
+  );
+  <span class="k">return</span> InsertedEntryRowSchema.<span class="f">parse</span>(result.rows[<span class="t">0</span>]);   <span class="c">// txid は z.coerce.number() で数値に</span>
+});
+<span class="k">return</span> { txid: inserted.txid, number: inserted.number, success: <span class="k">true</span> };</pre>
+        </div>
+        <div class="code">
+          <div class="code__title">app/infrastructure/database/collections.ts（抜粋）</div>
+<pre>onInsert: <span class="k">async</span> ({ transaction, collection }) =&gt; {
+  <span class="k">const</span> { modified: newEntry } = transaction.mutations[<span class="t">0</span>];   <span class="c">// 楽観的に入れた値</span>
+  <span class="k">const</span> result = <span class="k">await</span> trpc.entry.insert.<span class="f">mutate</span>({ <span class="c">/* … */</span> }); <span class="c">// サーバーに書く</span>
+  <span class="k">await</span> collection.utils.<span class="f">awaitTxId</span>(result.txid);             <span class="c">// 同期で戻るまで待つ</span>
+},</pre>
+        </div>
+        <div class="callout callout--note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/></svg>
+          <div>
+            <p>
+              <code>awaitTxId</code> の既定のタイムアウトは <strong>15 秒</strong>です。Electric が止まっているなど、txid が届かない状態が続くとエラーになり、トランザクションは failed（ロールバック）になります。
+              このとき PostgreSQL への書き込み自体は成功している点に注意してください（Electric が復旧すれば同期で表示されます）。
+            </p>
+          </div>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="sequence"><span class="num">05</span>全体のシーケンス</h2>
+        <p>
+          ここまでの部品がどの順番で動くのかを、1 枚のシーケンス図にまとめます。
+          受付端末で起動してから、ある受付を「呼び出す」と、その結果が別の端末（表示端末など）に届くまでの流れです。
+        </p>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 1030 830" role="img" aria-labelledby="seq-t" style="min-width:840px">
+              <title id="seq-t">起動から操作・配信・確定までの全体シーケンス</title>
+              <!-- phase bands -->
+              <g style="fill:color-mix(in srgb, var(--ink) 3.5%, transparent)">
+                <rect x="8" y="66" width="1014" height="186" rx="8"/>
+                <rect x="8" y="260" width="1014" height="74" rx="8"/>
+                <rect x="8" y="342" width="1014" height="74" rx="8"/>
+                <rect x="8" y="424" width="1014" height="148" rx="8"/>
+                <rect x="8" y="580" width="1014" height="92" rx="8"/>
+                <rect x="8" y="680" width="1014" height="136" rx="8"/>
+              </g>
+              <g class="t-xs">
+                <text x="18" y="86" class="t-xs t-b">① 起動・</text><text x="18" y="100" class="t-xs t-b">初回同期</text>
+                <text x="18" y="280" class="t-xs t-b">② 待機</text><text x="18" y="294" class="t-xs t-muted">live で保留</text>
+                <text x="18" y="362" class="t-xs t-b">③ 操作</text><text x="18" y="376" class="t-xs t-muted">楽観的更新</text>
+                <text x="18" y="444" class="t-xs t-b">④ 書き込み</text><text x="18" y="458" class="t-xs t-muted">tRPC</text>
+                <text x="18" y="600" class="t-xs t-b">⑤ 配信</text><text x="18" y="614" class="t-xs t-muted">全端末へ</text>
+                <text x="18" y="700" class="t-xs t-b">⑥ 確定・</text><text x="18" y="714" class="t-xs t-b">次の待機</text>
+              </g>
+
+              <!-- participants -->
+              <g class="c-client"><rect class="node" x="105" y="12" width="130" height="44" rx="9"/><text x="170" y="31" text-anchor="middle" class="t-sm t-b">画面</text><text x="170" y="47" text-anchor="middle" class="t-xs t-muted">React（受付端末）</text></g>
+              <g class="c-db"><rect class="node" x="255" y="12" width="130" height="44" rx="9"/><text x="320" y="31" text-anchor="middle" class="t-sm t-b">コレクション</text><text x="320" y="47" text-anchor="middle" class="t-xs t-muted">TanStack DB</text></g>
+              <g class="c-server"><rect class="node" x="415" y="12" width="130" height="44" rx="9"/><text x="480" y="31" text-anchor="middle" class="t-sm t-b">tRPC サーバー</text><text x="480" y="47" text-anchor="middle" class="t-xs t-muted">Hono :3001</text></g>
+              <g class="c-pg"><rect class="node" x="565" y="12" width="130" height="44" rx="9"/><text x="630" y="31" text-anchor="middle" class="t-sm t-b">PostgreSQL</text><text x="630" y="47" text-anchor="middle" class="t-xs t-muted">:5432</text></g>
+              <g class="c-electric"><rect class="node" x="725" y="12" width="130" height="44" rx="9"/><text x="790" y="31" text-anchor="middle" class="t-sm t-b">Electric</text><text x="790" y="47" text-anchor="middle" class="t-xs t-muted">:3000 /v1/shape</text></g>
+              <g class="c-client"><rect class="node" x="885" y="12" width="130" height="44" rx="9"/><text x="950" y="31" text-anchor="middle" class="t-sm t-b">他の端末</text><text x="950" y="47" text-anchor="middle" class="t-xs t-muted">表示端末・スマホ</text></g>
+              <path class="lifeline" d="M170 56 V822 M320 56 V822 M480 56 V822 M630 56 V822 M790 56 V822 M950 56 V822"/>
+
+              <!-- activations -->
+              <rect class="act c-electric" x="785" y="286" width="10" height="376" rx="2"/>
+              <rect class="act c-server" x="475" y="450" width="10" height="84" rx="2"/>
+
+              <!-- ① 起動・初回同期 -->
+              <path class="edge-c c-client" d="M170 94 H316" marker-end="url(#ah-client)"/>
+              <text x="245" y="88" text-anchor="middle" class="t-xs">ライブクエリを購読</text>
+              <path class="edge-c c-db" d="M320 122 H781" marker-end="url(#ah-db)"/>
+              <text x="555" y="116" text-anchor="middle" class="t-xs mono">GET /v1/shape?table=entry_event&amp;offset=-1</text>
+              <path class="edge dash" d="M785 150 H324" marker-end="url(#ah)"/>
+              <text x="555" y="144" text-anchor="middle" class="t-xs t-muted">スナップショット（全行）＋ snapshot-end ＋ handle</text>
+              <path class="edge-c c-db" d="M320 178 H781" marker-end="url(#ah-db)"/>
+              <text x="555" y="172" text-anchor="middle" class="t-xs mono">GET …&amp;handle=…&amp;offset=0_0（追いつき）</text>
+              <path class="edge dash" d="M785 206 H324" marker-end="url(#ah)"/>
+              <text x="555" y="200" text-anchor="middle" class="t-xs t-muted">スナップショット後の変更 ＋ up-to-date</text>
+              <path class="edge-c c-db dash" d="M320 234 H174" marker-end="url(#ah-db)"/>
+              <text x="245" y="228" text-anchor="middle" class="t-xs">ready → 一覧を表示</text>
+              <text x="555" y="244" text-anchor="middle" class="t-xs t-muted">entry と entry_event の 2 つの Shape を、それぞれ同じ手順で同期する</text>
+
+              <!-- ② 待機 -->
+              <path class="edge-c c-db" d="M320 286 H781" marker-end="url(#ah-db)"/>
+              <text x="555" y="280" text-anchor="middle" class="t-xs mono">GET …&amp;offset=27263864_0&amp;live=true</text>
+              <path class="edge-c c-client" d="M950 314 H799" marker-end="url(#ah-client)"/>
+              <text x="872" y="308" text-anchor="middle" class="t-xs mono">GET …&amp;live=true</text>
+              <text x="555" y="322" text-anchor="middle" class="t-xs t-muted">変更が来るまで応答を保留（最大 20 秒。何もなければ空で返り、すぐ次を送る）</text>
+
+              <!-- ③ 操作 -->
+              <path class="edge-c c-client" d="M170 368 H316" marker-end="url(#ah-client)"/>
+              <text x="245" y="362" text-anchor="middle" class="t-xs">呼び出す → insert()</text>
+              <path class="edge-c c-db dash" d="M320 396 H174" marker-end="url(#ah-db)"/>
+              <text x="245" y="390" text-anchor="middle" class="t-xs">すぐ再描画</text>
+              <text x="332" y="384" class="t-xs t-muted">楽観的な層に</text>
+              <text x="332" y="398" class="t-xs t-muted">called が入る</text>
+
+              <!-- ④ 書き込み -->
+              <path class="edge-c c-db" d="M320 450 H471" marker-end="url(#ah-db)"/>
+              <text x="398" y="444" text-anchor="middle" class="t-xs mono">onInsert → insertEvent</text>
+              <path class="edge-c c-server" d="M485 478 H626" marker-end="url(#ah-server)"/>
+              <text x="557" y="472" text-anchor="middle" class="t-xs">検証 ＋ INSERT ＋ COMMIT</text>
+              <path class="edge dash" d="M630 506 H489" marker-end="url(#ah)"/>
+              <text x="557" y="500" text-anchor="middle" class="t-xs t-muted mono">txid</text>
+              <path class="edge dash" d="M475 534 H324" marker-end="url(#ah)"/>
+              <text x="398" y="528" text-anchor="middle" class="t-xs t-muted mono">{ txid }</text>
+              <rect x="330" y="546" width="140" height="20" rx="5" class="box"/>
+              <text x="400" y="560" text-anchor="middle" class="t-xs mono">awaitTxId(txid) で待機</text>
+
+              <!-- ⑤ 配信 -->
+              <path class="edge-c c-pg" d="M630 606 H781" marker-end="url(#ah-pg)"/>
+              <text x="707" y="600" text-anchor="middle" class="t-xs">WAL（論理レプリケーション）</text>
+              <path class="edge-c c-electric" d="M785 634 H324" marker-end="url(#ah-electric)"/>
+              <text x="555" y="628" text-anchor="middle" class="t-xs" style="fill:var(--c-electric)">保留していた応答を返す：insert（txids 付き）＋ up-to-date</text>
+              <path class="edge-c c-electric" d="M795 662 H946" marker-end="url(#ah-electric)"/>
+              <text x="872" y="656" text-anchor="middle" class="t-xs" style="fill:var(--c-electric)">同じ変更を返す</text>
+
+              <!-- ⑥ 確定・次の待機 -->
+              <rect x="255" y="692" width="210" height="36" rx="6" class="box"/>
+              <text x="360" y="707" text-anchor="middle" class="t-xs">txid が一致 → awaitTxId が resolve</text>
+              <text x="360" y="721" text-anchor="middle" class="t-xs">楽観的な行を同期済みの行に置き換え</text>
+              <rect x="885" y="692" width="130" height="36" rx="6" class="box"/>
+              <text x="950" y="707" text-anchor="middle" class="t-xs">コレクションに追加</text>
+              <text x="950" y="721" text-anchor="middle" class="t-xs">→ 画面を再描画</text>
+              <path class="edge-c c-db dash" d="M320 746 H174" marker-end="url(#ah-db)"/>
+              <text x="245" y="740" text-anchor="middle" class="t-xs">表示はそのまま</text>
+              <path class="edge-c c-db" d="M320 774 H781" marker-end="url(#ah-db)"/>
+              <text x="555" y="768" text-anchor="middle" class="t-xs mono">次の GET …&amp;offset=（新しい値）&amp;live=true</text>
+              <path class="edge-c c-client" d="M950 802 H799" marker-end="url(#ah-client)"/>
+              <text x="872" y="796" text-anchor="middle" class="t-xs mono">次の GET …&amp;live=true</text>
+            </svg>
+          </div>
+          <div class="legend">
+            <span style="--c:var(--muted)"><i class="line"></i>実線：リクエスト・呼び出し</span>
+            <span style="--c:var(--muted)"><i class="dash"></i>破線：応答・戻り値</span>
+            <span class="c-electric"><i></i>縦長の帯：応答を保留・処理している間</span>
+          </div>
+          <figcaption>図 5-1. 全体のシーケンス ― 書き込みは tRPC、読み取りは Electric という 2 本の経路が、txid で 1 つにつながる</figcaption>
+        </figure>
+        <ol class="steps-legend">
+          <li><span class="n">1</span><span><strong>起動・初回同期</strong>：画面がライブクエリを購読すると、元になるコレクションが Electric への購読を始めます。スナップショット（Shape を作った時点の全行）→ 追いつき（その後の変更）と取得し、<code>up-to-date</code> を受け取った時点で ready になって画面に一覧が出ます。</span></li>
+          <li><span class="n">2</span><span><strong>待機</strong>：各端末は <code>live=true</code> のリクエストを送り、Electric は変更が来るまで応答を保留します。20 秒たっても変更がなければ空の応答を返し、端末はすぐ次のリクエストを送ります。</span></li>
+          <li><span class="n">3</span><span><strong>操作</strong>：「呼び出す」を押すと <code>entryEventsCollection.insert()</code> が楽観的な層に called イベントを入れ、サーバーを待たずに画面が変わります。</span></li>
+          <li><span class="n">4</span><span><strong>書き込み</strong>：<code>onInsert</code> が tRPC の <code>entry.insertEvent</code> を呼びます。サーバーは受付の行をロックして遷移ルールを検証し、INSERT してコミットし、そのトランザクションの txid を返します。コレクションは <code>awaitTxId(txid)</code> で同期を待ちます。</span></li>
+          <li><span class="n">5</span><span><strong>配信</strong>：コミットは WAL に記録され、論理レプリケーションで Electric に届きます。Electric は保留していた<strong>すべての端末</strong>の応答に、この変更（<code>txids</code> 付き）を載せて返します。</span></li>
+          <li><span class="n">6</span><span><strong>確定・次の待機</strong>：操作した端末では txid が一致して <code>awaitTxId</code> が終わり、楽観的な行が同じ ID の同期済みの行に置き換わります（表示は変わらず、ちらつかない）。他の端末では行が追加されて画面が再描画されます。どの端末も、応答に含まれる新しい offset で次の <code>live=true</code> を送ります。</span></li>
+        </ol>
+        <div class="callout callout--note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/></svg>
+          <div>
+            <p>
+              サーバーが遷移ルールに合わないと判断した場合（別の端末が先に完了にしていたなど）は、④ で tRPC が <code>CONFLICT</code> エラーを返します。
+              このとき <code>onInsert</code> が失敗し、トランザクションは failed になって楽観的な行は消え、画面は元に戻ります。⑤ 以降は起きません。
+              受付の発行（<code>entriesCollection.insert()</code>）も、サーバーが整理券番号を採番する点を除けば同じ流れです。
+            </p>
+          </div>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="in-app"><span class="num">06</span>このアプリでの使い方まとめ</h2>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>やりたいこと</th><th>使っている機能</th><th>場所</th></tr></thead>
+            <tbody>
+              <tr><td>テーブルをブラウザに同期する</td><td><code>createCollection(electricCollectionOptions({ shapeOptions }))</code></td><td><code>infrastructure/database/collections.ts</code></td></tr>
+              <tr><td>同期データの型を検証する</td><td><code>schema: DbEntrySchema</code>（Zod）</td><td>同上</td></tr>
+              <tr><td>受付とイベントを結合して表示する</td><td><code>createLiveQueryCollection</code> ＋ <code>leftJoin</code> / <code>orderBy</code></td><td><code>query/entry/entry-states-store.ts</code></td></tr>
+              <tr><td>操作を即時に反映する</td><td><code>collection.insert()</code>（楽観的更新）</td><td><code>infrastructure/repositories/*</code></td></tr>
+              <tr><td>サーバーに書き込む</td><td><code>onInsert</code> ＋ tRPC</td><td><code>infrastructure/database/collections.ts</code></td></tr>
+              <tr><td>確定まで待つ</td><td><code>collection.utils.awaitTxId()</code>、<code>tx.when('settled')</code></td><td>コレクション定義・リポジトリ</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="pitfalls"><span class="num">07</span>つまずきやすいポイント</h2>
+        <div class="cards cards--2">
+          <div class="card">
+            <h4><span class="tag c-warn">SSR</span>コレクションはブラウザ専用</h4>
+            <p>コレクションと Shape の購読はブラウザで動きます。TanStack Start の SSR で実行されないよう、各ルートは <code>&lt;ClientOnly&gt;</code> で画面を包んでいます。</p>
+          </div>
+          <div class="card">
+            <h4><span class="tag c-warn">HTTPS</span>安全なコンテキストが必要</h4>
+            <p>ID 生成の <code>crypto.randomUUID()</code> は HTTPS（または localhost）でしか使えません。スマホから IP アドレスでアクセスする場合も Caddy の HTTPS を通します。</p>
+          </div>
+          <div class="card">
+            <h4><span class="tag c-warn">日時</span>TIMESTAMPTZ と parser</h4>
+            <p>Electric は列の型名ごとに <code>parser</code> を適用し、指定がなければ文字列のまま渡します。日時列を <code>TIMESTAMP</code>（タイムゾーンなし）にすると UTC の時刻がオフセットなしで届き、ブラウザがローカル時刻と解釈して時刻がずれます。このアプリは列を <code>TIMESTAMPTZ</code> にし、<code>"…+00"</code> 形式を ISO 8601 に整形する <code>parsePgTimestamp()</code> で Date にしています（そのままの形式は Safari などで解釈できない場合がある）。</p>
+          </div>
+          <div class="card">
+            <h4><span class="tag c-warn">同期範囲</span>Shape はテーブル全体</h4>
+            <p>Shape に <code>where</code> を指定していないため、全端末が全行を同期します。データが増えると初回同期が重くなるので、将来は日付やトークンで絞り込む余地があります。</p>
+          </div>
+          <div class="card">
+            <h4><span class="tag c-warn">永続化</span>再読み込みで再同期</h4>
+            <p>同期データはメモリ上にあるため、ページを再読み込みすると Shape を最初から取り直します。オフライン中は書き込みもできません。</p>
+          </div>
+          <div class="card">
+            <h4><span class="tag c-warn">API</span>RC 版の API 変更</h4>
+            <p>TanStack DB 1.0 RC への更新で、完了待ちが <code>tx.isPersisted.promise</code> から <code>tx.when('settled')</code> に、<code>onInsert</code> の戻り値（<code>{ txid }</code>）が <code>awaitTxId()</code> の呼び出しに変わりました。</p>
+          </div>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="glossary"><span class="num">08</span>用語集</h2>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>用語</th><th>意味</th></tr></thead>
+            <tbody>
+              <tr><td>WAL</td><td>Write-Ahead Log。PostgreSQL が変更を記録するログ。<code>wal_level=logical</code> で論理レプリケーションに使える</td></tr>
+              <tr><td>LSN</td><td>Log Sequence Number。WAL 上の位置。Electric の offset の前半はこの値</td></tr>
+              <tr><td>walsender</td><td>レプリケーション接続ごとに動く PostgreSQL のプロセス。WAL を読んで接続先へ変更を送る</td></tr>
+              <tr><td>パブリケーション</td><td>論理レプリケーションで流すテーブルの集まり。Electric は <code>electric_publication_default</code> を使う</td></tr>
+              <tr><td>論理レプリケーション</td><td>行単位の変更（INSERT / UPDATE / DELETE）を外部に流す PostgreSQL の機能</td></tr>
+              <tr><td>Shape</td><td>Electric の購読単位。テーブル（と任意の絞り込み条件）で定義される</td></tr>
+              <tr><td>handle / offset</td><td>Shape の ID と、Shape ログ上の位置。クライアントは offset を覚えておき、続きから受け取る</td></tr>
+              <tr><td>ロングポーリング</td><td>サーバーが新しいデータが来るまで応答を保留する HTTP の使い方。Electric のライブモード（<code>live=true</code>）はこれで変更を届ける</td></tr>
+              <tr><td>up-to-date</td><td>「ここまでで最新」を表す Electric の制御メッセージ。TanStack DB はこれを区切りに変更を確定する</td></tr>
+              <tr><td>レプリケーションスロット</td><td>論理レプリケーションの読み取り位置を PostgreSQL 側で保持するしくみ。Electric は <code>electric_slot_default</code> を使う</td></tr>
+              <tr><td>コレクション</td><td>TanStack DB のデータの入れ物。同期元を差し替えられる</td></tr>
+              <tr><td>ライブクエリ</td><td>元データの変更に追従して結果が自動更新されるクエリ</td></tr>
+              <tr><td>楽観的更新</td><td>サーバーの応答を待たずに、成功すると見込んで先に画面へ反映すること</td></tr>
+              <tr><td>txid</td><td>PostgreSQL のトランザクション ID。書き込みと同期の到着を照合するのに使う</td></tr>
+              <tr><td>ミューテーションハンドラー</td><td><code>onInsert</code> / <code>onUpdate</code> / <code>onDelete</code>。楽観的な変更をサーバーへ永続化する関数</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <nav class="pager" aria-label="前後の資料">
+          <a href="structure.html"><small>← 前へ</small>構成・構造の解説</a>
+          <a class="next" href="tech-materialized-view.html"><small>次へ →</small>マテリアライズドビュー解説</a>
+        </nav>
+      </article>
+    </main>
+  </div>
+  <footer class="site-footer">店舗向け順番待ちアプリ 解説資料 ― TanStack DB × Electric</footer>
+</body>
+</html>

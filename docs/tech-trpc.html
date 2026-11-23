@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>tRPC 技術解説</title>
+  <meta name="description" content="順番待ちアプリの書き込み API を担う tRPC の技術解説。型がクライアントに届くしくみ、Hono との統合、リクエストの中身、開発時の通信経路を図で説明します。">
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="assets/docs.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="brand" href="index.html"><span class="brand__mark">Q</span>順番待ちアプリ 解説資料</a>
+      <nav class="site-nav" data-site-nav aria-label="資料一覧"></nav>
+      <button class="icon-btn nav-toggle" data-nav-toggle aria-label="メニューを開く"></button>
+      <button class="icon-btn" data-theme-toggle aria-label="テーマ切り替え"></button>
+    </div>
+  </header>
+  <div class="scrim"></div>
+
+  <div class="layout">
+    <aside class="sidenav" data-sidenav></aside>
+    <main class="main">
+      <article class="doc">
+        <div class="eyebrow">Tech Deep Dive</div>
+        <h1>tRPC 技術解説</h1>
+        <p class="lead">
+          tRPC は、サーバーに定義した関数（プロシージャ）を、クライアントから<strong>型付きの関数呼び出し</strong>として使えるようにするライブラリです。
+          このアプリでは、Electric が担当できない<strong>書き込みと採番</strong>を、Hono 上で動く tRPC サーバーが受け持っています。
+        </p>
+        <div class="doc-meta">
+          <span class="chip"><span class="dot c-server"></span>@trpc/server・@trpc/client 11.29.5</span>
+          <span class="chip"><span class="dot c-server"></span>hono 4.13.19</span>
+          <span class="chip"><span class="dot c-server"></span>@hono/trpc-server 0.4.2</span>
+          <span class="chip"><span class="dot c-domain"></span>zod 4.6.7</span>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="what"><span class="num">01</span>tRPC とは</h2>
+        <p>
+          REST API では、サーバーとクライアントの間で「URL・リクエストの形・レスポンスの形」を別々に定義し、ずれないように管理する必要があります。
+          tRPC では、<strong>サーバーのコードの型そのもの</strong>をクライアントが参照するため、スキーマファイルやコード生成なしで両者がつながります。
+        </p>
+        <div class="compare">
+          <div class="card">
+            <h4><span class="tag c-muted">REST</span>URL と JSON の約束事</h4>
+<div class="code" style="margin:10px 0 0"><pre><span class="k">const</span> res = <span class="k">await</span> <span class="f">fetch</span>(<span class="s">'/api/entries'</span>, {
+  method: <span class="s">'POST'</span>,
+  body: JSON.<span class="f">stringify</span>(data),
+});
+<span class="k">const</span> json = <span class="k">await</span> res.<span class="f">json</span>(); <span class="c">// 型は any</span></pre></div>
+            <ul class="small">
+              <li>URL の打ち間違いは実行するまで分からない</li>
+              <li>レスポンスの型は自分で書く（ずれても気づけない）</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h4><span class="tag c-server">tRPC</span>関数呼び出しとして使う</h4>
+<div class="code" style="margin:10px 0 0"><pre><span class="k">const</span> result = <span class="k">await</span> trpc.entry.insert.<span class="f">mutate</span>({
+  id, queue_id,
+  party_size, public_token,
+});
+result.number; <span class="c">// number 型と推論される</span></pre></div>
+            <ul class="small">
+              <li>プロシージャ名・入力の形が補完され、間違いはコンパイルエラー</li>
+              <li>サーバーの戻り値の型がそのままクライアントに伝わる</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="role"><span class="num">02</span>このアプリでの役割</h2>
+        <p>tRPC が受け持つのは、<strong>PostgreSQL への書き込み</strong>と<strong>採番</strong>の 3 つのプロシージャだけです。画面に表示するデータの取得には使いません（それは Electric の役目です）。</p>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 900 250" role="img" aria-labelledby="role-t">
+              <title id="role-t">tRPC の役割と呼び出し元</title>
+              <g class="c-db"><rect class="node" x="16" y="30" width="200" height="66" rx="10"/>
+                <text x="116" y="56" text-anchor="middle" class="t-sm t-b">コレクションの onInsert</text>
+                <text x="116" y="76" text-anchor="middle" class="t-xs t-muted">entries / entryEvents</text></g>
+              <g class="c-server"><rect class="node" x="16" y="150" width="200" height="66" rx="10"/>
+                <text x="116" y="176" text-anchor="middle" class="t-sm t-b">ユースケース</text>
+                <text x="116" y="196" text-anchor="middle" class="t-xs t-muted mono">getNextTicketNumber</text></g>
+
+              <g class="c-server">
+                <rect class="zone" x="300" y="16" width="340" height="216" rx="14"/>
+                <text x="316" y="40" class="t-b">tRPC サーバー（Hono）</text>
+                <rect class="node" x="316" y="54" width="308" height="44" rx="8"/>
+                <text x="330" y="74" class="t-sm t-b mono">entry.insert</text><text x="610" y="74" text-anchor="end" class="t-xs t-muted">mutation</text>
+                <text x="330" y="90" class="t-xs t-muted">ロックして採番・INSERT → txid, number</text>
+                <rect class="node" x="316" y="106" width="308" height="44" rx="8"/>
+                <text x="330" y="126" class="t-sm t-b mono">entry.insertEvent</text><text x="610" y="126" text-anchor="end" class="t-xs t-muted">mutation</text>
+                <text x="330" y="142" class="t-xs t-muted">遷移を検証して INSERT → txid</text>
+                <rect class="node" x="316" y="166" width="308" height="44" rx="8"/>
+                <text x="330" y="186" class="t-sm t-b mono">queue.getNextTicketNumber</text><text x="610" y="186" text-anchor="end" class="t-xs t-muted">query</text>
+                <text x="330" y="202" class="t-xs t-muted">仮の番号 MAX(number) + 1</text>
+              </g>
+              <path class="edge-c c-db" d="M216 56 C260 56, 270 76, 312 76" marker-end="url(#ah-db)"/>
+              <path class="edge-c c-db" d="M216 70 C260 70, 270 128, 312 128" marker-end="url(#ah-db)"/>
+              <path class="edge-c c-server" d="M216 183 C260 183, 270 188, 312 188" marker-end="url(#ah-server)"/>
+
+              <g class="c-pg">
+                <path class="node" d="M720 86 v80 a80 12 0 0 0 160 0 v-80"/>
+                <ellipse class="node" cx="800" cy="86" rx="80" ry="12"/>
+                <text x="800" y="132" text-anchor="middle" class="t-b">PostgreSQL</text>
+                <text x="800" y="152" text-anchor="middle" class="t-xs t-muted">pg Pool</text>
+              </g>
+              <path class="edge-c c-server" d="M640 124 H716" marker-end="url(#ah-server)"/>
+              <text x="678" y="116" text-anchor="middle" class="t-xs t-muted">SQL</text>
+            </svg>
+          </div>
+          <figcaption>図 2-1. tRPC の守備範囲 ― 読み取り（表示用のデータ）は扱わない</figcaption>
+        </figure>
+
+        <!-- ===================================================== -->
+        <h2 id="server"><span class="num">03</span>サーバー側の組み立て</h2>
+        <p>サーバーは「初期化 → プロシージャ → ルーター → HTTP への接続」の順に組み立てられています。</p>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 900 230" role="img" aria-labelledby="sv-t">
+              <title id="sv-t">tRPC サーバーの構成要素</title>
+              <g class="c-server">
+                <rect class="node" x="16" y="70" width="150" height="70" rx="10"/>
+                <text x="91" y="96" text-anchor="middle" class="t-sm t-b mono">init.ts</text>
+                <text x="91" y="116" text-anchor="middle" class="t-xs t-muted">initTRPC.context()</text>
+                <text x="91" y="130" text-anchor="middle" class="t-xs t-muted">router / procedure</text>
+
+                <rect class="node" x="214" y="20" width="160" height="60" rx="10"/>
+                <text x="294" y="46" text-anchor="middle" class="t-sm t-b mono">routers/entry.ts</text>
+                <text x="294" y="64" text-anchor="middle" class="t-xs t-muted">insert / insertEvent</text>
+                <rect class="node" x="214" y="130" width="160" height="60" rx="10"/>
+                <text x="294" y="156" text-anchor="middle" class="t-sm t-b mono">routers/queue.ts</text>
+                <text x="294" y="174" text-anchor="middle" class="t-xs t-muted">getNextTicketNumber</text>
+
+                <rect class="node" x="422" y="70" width="160" height="70" rx="10"/>
+                <text x="502" y="96" text-anchor="middle" class="t-sm t-b mono">trpc/router.ts</text>
+                <text x="502" y="116" text-anchor="middle" class="t-xs t-muted">appRouter</text>
+                <text x="502" y="130" text-anchor="middle" class="t-xs t-muted">type AppRouter</text>
+
+                <rect class="node" x="630" y="70" width="254" height="70" rx="10" style="stroke-width:2.2"/>
+                <text x="757" y="96" text-anchor="middle" class="t-sm t-b mono">index.ts（Hono）</text>
+                <text x="757" y="116" text-anchor="middle" class="t-xs t-muted">app.use('/trpc/*', trpcServer(…))</text>
+                <text x="757" y="130" text-anchor="middle" class="t-xs t-muted">serve({ port: 3001 })</text>
+              </g>
+              <g class="c-domain"><rect class="node" x="214" y="196" width="160" height="30" rx="8"/><text x="294" y="216" text-anchor="middle" class="t-xs mono">shared/schemas.ts（Zod）</text></g>
+              <g class="c-pg"><rect class="node" x="630" y="176" width="254" height="40" rx="8"/><text x="757" y="201" text-anchor="middle" class="t-xs mono">trpc/context.ts → { pool }</text></g>
+
+              <path class="edge" d="M166 96 C190 96, 190 50, 210 50" marker-end="url(#ah)"/>
+              <path class="edge" d="M166 114 C190 114, 190 160, 210 160" marker-end="url(#ah)"/>
+              <path class="edge" d="M374 50 C400 50, 400 96, 418 96" marker-end="url(#ah)"/>
+              <path class="edge" d="M374 160 C400 160, 400 114, 418 114" marker-end="url(#ah)"/>
+              <path class="edge" d="M582 105 H626" marker-end="url(#ah)"/>
+              <path class="edge" d="M757 176 V144" marker-end="url(#ah)"/>
+              <text x="190" y="28" class="t-xs t-muted">procedure を使う</text>
+              <text x="584" y="96" class="t-xs t-muted">登録</text>
+            </svg>
+          </div>
+          <figcaption>図 3-1. サーバーの構成 ― 入力の検証は Zod、DB 接続はコンテキスト経由で各プロシージャに渡る</figcaption>
+        </figure>
+
+        <div class="code">
+          <div class="code__title">server/trpc/init.ts ・ server/trpc/context.ts</div>
+<pre><span class="c">// 初期化：コンテキストの型を指定して tRPC インスタンスを作る</span>
+<span class="k">const</span> t = initTRPC.<span class="f">context</span>&lt;Context&gt;().<span class="f">create</span>();
+<span class="k">export const</span> router = t.router;
+<span class="k">export const</span> publicProcedure = t.procedure;
+
+<span class="c">// コンテキスト：リクエストごとに呼ばれ、プロシージャから ctx.pool で使える</span>
+<span class="k">export function</span> <span class="f">createContext</span>(_opts, _c): Context {
+  <span class="k">return</span> { pool };
+}</pre>
+        </div>
+        <div class="code">
+          <div class="code__title">server/routers/queue.ts</div>
+<pre><span class="k">export const</span> queueRouter = <span class="f">router</span>({
+  getNextTicketNumber: publicProcedure
+    .<span class="f">input</span>(UuidSchema)                         <span class="c">// ① 入力を Zod で検証</span>
+    .<span class="f">query</span>(<span class="k">async</span> ({ input: queueId, ctx }) =&gt; {   <span class="c">// ② query = 読み取り系</span>
+      <span class="k">const</span> result = <span class="k">await</span> ctx.pool.<span class="f">query</span>(
+        <span class="s">'SELECT COALESCE(MAX(number), 0) as max_number FROM entry WHERE queue_id = $1'</span>,
+        [queueId],
+      );
+      <span class="k">return</span> { number: (result.rows[<span class="t">0</span>]?.max_number || <span class="t">0</span>) + <span class="t">1</span> }; <span class="c">// ③ 戻り値の型が推論される</span>
+    }),
+});</pre>
+        </div>
+        <div class="code">
+          <div class="code__title">server/trpc/router.ts</div>
+<pre><span class="k">export const</span> appRouter = <span class="f">router</span>({
+  entry: entryRouter,   <span class="c">// trpc.entry.insert / trpc.entry.insertEvent</span>
+  queue: queueRouter,   <span class="c">// trpc.queue.getNextTicketNumber</span>
+});
+
+<span class="k">export type</span> AppRouter = <span class="k">typeof</span> appRouter;  <span class="c">// ← クライアントが使うのはこの「型」だけ</span></pre>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="types"><span class="num">04</span>型がクライアントに届くしくみ</h2>
+        <p>
+          tRPC の要は <code>export type AppRouter = typeof appRouter</code> です。クライアントは <code>import type</code> でこの型だけを取り込み、
+          プロシージャ名・入力・出力の型を推論します。<code>import type</code> はビルド時に消えるため、<strong>サーバーのコードはブラウザに一切含まれません</strong>。
+        </p>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 900 230" role="img" aria-labelledby="ty-t">
+              <title id="ty-t">Zod スキーマからクライアントの型推論までの流れ</title>
+              <g class="c-domain"><rect class="node" x="16" y="70" width="160" height="70" rx="10"/>
+                <text x="96" y="96" text-anchor="middle" class="t-sm t-b">Zod スキーマ</text>
+                <text x="96" y="116" text-anchor="middle" class="t-xs t-muted mono">InsertDbEntrySchema</text>
+                <text x="96" y="130" text-anchor="middle" class="t-xs t-muted">（実行時の検証）</text></g>
+              <g class="c-server"><rect class="node" x="226" y="70" width="160" height="70" rx="10"/>
+                <text x="306" y="96" text-anchor="middle" class="t-sm t-b">プロシージャ</text>
+                <text x="306" y="116" text-anchor="middle" class="t-xs t-muted">入力型 ＋ 戻り値の型</text>
+                <text x="306" y="130" text-anchor="middle" class="t-xs t-muted">{ txid, success }</text></g>
+              <g class="c-server"><rect class="node" x="436" y="70" width="160" height="70" rx="10"/>
+                <text x="516" y="100" text-anchor="middle" class="t-sm t-b mono">AppRouter</text>
+                <text x="516" y="120" text-anchor="middle" class="t-xs t-muted">typeof appRouter</text></g>
+              <g class="c-client"><rect class="node" x="680" y="70" width="204" height="70" rx="10"/>
+                <text x="782" y="96" text-anchor="middle" class="t-sm t-b mono">createTRPCClient</text>
+                <text x="782" y="116" text-anchor="middle" class="t-xs t-muted mono">&lt;AppRouter&gt;</text>
+                <text x="782" y="130" text-anchor="middle" class="t-xs t-muted">補完・型チェック</text></g>
+              <path class="edge-c c-domain" d="M176 105 H222" marker-end="url(#ah-domain)"/>
+              <path class="edge-c c-server" d="M386 105 H432" marker-end="url(#ah-server)"/>
+              <path class="edge-c c-server dash" d="M596 105 H676" marker-end="url(#ah-server)"/>
+              <text x="636" y="96" text-anchor="middle" class="t-xs t-b" style="fill:var(--c-server)">import type</text>
+
+              <path d="M410 30 V200" stroke="var(--line-strong)" stroke-dasharray="6 5"/>
+              <path d="M640 30 V200" stroke="var(--line-strong)" stroke-dasharray="6 5"/>
+              <text x="210" y="30" text-anchor="middle" class="t-xs t-muted">server/（Node.js で実行）</text>
+              <text x="525" y="30" text-anchor="middle" class="t-xs t-muted">型だけの境界</text>
+              <text x="770" y="30" text-anchor="middle" class="t-xs t-muted">app/（ブラウザで実行）</text>
+              <text x="450" y="190" text-anchor="middle" class="t-xs t-muted">ビルド後のブラウザ用 JS には server/ のコードは入らない（型は消える）</text>
+            </svg>
+          </div>
+          <figcaption>図 4-1. 型の流れ ― 実行時のコードは共有せず、TypeScript の型情報だけを共有する</figcaption>
+        </figure>
+        <div class="code">
+          <div class="code__title">app/client/trpc.ts</div>
+<pre><span class="k">import</span> { createTRPCClient, httpBatchLink } <span class="k">from</span> <span class="s">'@trpc/client'</span>;
+<span class="k">import type</span> { AppRouter } <span class="k">from</span> <span class="s">'../../server/trpc/router'</span>;  <span class="c">// 型だけ</span>
+
+<span class="k">export const</span> trpc = <span class="f">createTRPCClient</span>&lt;AppRouter&gt;({
+  links: [<span class="f">httpBatchLink</span>({ url: <span class="s">'/trpc'</span> })],   <span class="c">// 同じオリジンの /trpc に送る</span>
+});</pre>
+        </div>
+        <div class="callout callout--note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/></svg>
+          <div>
+            <div class="callout__title">React のフックではなく「バニラ」クライアントを使う理由</div>
+            <p>
+              tRPC の呼び出し元はコレクションの <code>onInsert</code> とユースケースで、どちらも React コンポーネントの外です。そのため React Query 連携ではなく、
+              普通の関数として呼べる <code>createTRPCClient</code> を使っています（そのため React Query 連携の <code>@trpc/tanstack-react-query</code> は依存に含めていません）。
+            </p>
+          </div>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="wire"><span class="num">05</span>リクエストの中身</h2>
+        <p>tRPC は独自のプロトコルではなく、ふつうの HTTP と JSON でやり取りします。ブラウザの開発者ツールで中身をそのまま確認できます。</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>種類</th><th>HTTP</th><th>URL</th><th>入力の場所</th></tr></thead>
+            <tbody>
+              <tr><td>query</td><td><span class="tag c-client">GET</span></td><td><code>/trpc/queue.getNextTicketNumber?batch=1&amp;input=…</code></td><td>クエリ文字列（URL エンコードした JSON）</td></tr>
+              <tr><td>mutation</td><td><span class="tag c-server">POST</span></td><td><code>/trpc/entry.insert?batch=1</code></td><td>リクエストボディ（JSON）</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="code">
+          <div class="code__title">query の例（実際に受付端末が送るリクエスト）</div>
+<pre>GET /trpc/queue.getNextTicketNumber?batch=1&amp;input=%7B%220%22%3A%22a0eebc99-…%22%7D
+                                                   <span class="c">↑ {"0":"a0eebc99-…"} をエンコードしたもの</span>
+
+<span class="c">// レスポンス（バッチなので配列）</span>
+[{ <span class="s">"result"</span>: { <span class="s">"data"</span>: { <span class="s">"number"</span>: <span class="t">35</span> } } }]</pre>
+        </div>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 900 190" role="img" aria-labelledby="bt-t">
+              <title id="bt-t">httpBatchLink によるバッチ処理</title>
+              <g class="c-client">
+                <rect class="node" x="16" y="20" width="200" height="34" rx="8"/><text x="116" y="42" text-anchor="middle" class="t-xs mono">呼び出し A</text>
+                <rect class="node" x="16" y="64" width="200" height="34" rx="8"/><text x="116" y="86" text-anchor="middle" class="t-xs mono">呼び出し B（同時に発生）</text>
+              </g>
+              <path class="edge" d="M216 37 C260 37, 260 62, 296 62" marker-end="url(#ah)"/>
+              <path class="edge" d="M216 81 C260 81, 260 66, 296 66" marker-end="url(#ah)"/>
+              <g class="c-server"><rect class="node" x="300" y="34" width="260" height="60" rx="10"/>
+                <text x="430" y="58" text-anchor="middle" class="t-sm t-b">1 回の HTTP リクエスト</text>
+                <text x="430" y="78" text-anchor="middle" class="t-xs t-muted mono">/trpc/A,B?batch=1  {"0":…, "1":…}</text></g>
+              <path class="edge-c c-server" d="M560 64 H636" marker-end="url(#ah-server)"/>
+              <g class="c-server"><rect class="node" x="640" y="34" width="244" height="60" rx="10"/>
+                <text x="762" y="58" text-anchor="middle" class="t-sm t-b">tRPC サーバー</text>
+                <text x="762" y="78" text-anchor="middle" class="t-xs t-muted">それぞれ実行し配列で返す</text></g>
+              <text x="450" y="140" text-anchor="middle" class="t-xs t-muted">同じタイミングの呼び出しをまとめて送る。このアプリは呼び出しが順番に起きるため、通常は 1 件ずつ（"0" だけ）になる</text>
+            </svg>
+          </div>
+          <figcaption>図 5-1. httpBatchLink ― URL の <code>?batch=1</code> と入力の <code>"0"</code> キーはこのためにある</figcaption>
+        </figure>
+
+        <h3 id="errors">エラーの伝わり方</h3>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>原因</th><th>tRPC のエラーコード</th><th>クライアントでの見え方</th></tr></thead>
+            <tbody>
+              <tr><td>入力が Zod の検証に失敗（例：トークンが 7 文字）</td><td><code>BAD_REQUEST</code></td><td><code>TRPCClientError</code> が throw される</td></tr>
+              <tr><td>待ち行列・受付が存在しない</td><td><code>NOT_FOUND</code></td><td>同上</td></tr>
+              <tr><td>状態遷移ルールに合わない（例：キャンセル済みの受付を完了）</td><td><code>CONFLICT</code></td><td>同上（メッセージ「現在の状態（○○）からはこの操作を実行できません」）</td></tr>
+              <tr><td>その他の SQL の失敗（例：トークンの重複）</td><td><code>INTERNAL_SERVER_ERROR</code></td><td>同上</td></tr>
+              <tr><td>サーバーに接続できない（未起動など）</td><td>―</td><td>ネットワークエラー（Vite のログに <code>ECONNREFUSED</code>）</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>いずれも <code>onInsert</code> から例外が投げられるため、TanStack DB のトランザクションは failed になり、楽観的な変更はロールバックされます。ユースケースはそのエラーメッセージを画面のアラートに表示します。</p>
+
+        <!-- ===================================================== -->
+        <h2 id="hono"><span class="num">06</span>Hono との統合</h2>
+        <p>tRPC 自体は HTTP サーバーを持たないため、<strong>Hono</strong> の上に <code>@hono/trpc-server</code> のミドルウェアとして載せています。Node.js での起動には <code>@hono/node-server</code> を使います。</p>
+        <div class="code">
+          <div class="code__title">server/index.ts（抜粋）</div>
+<pre><span class="k">const</span> app = <span class="k">new</span> <span class="f">Hono</span>();
+
+app.<span class="f">use</span>(<span class="s">'/trpc/*'</span>, <span class="f">cors</span>({ origin: [<span class="s">'http://localhost:5173'</span>, <span class="s">'https://localhost:5173'</span>], credentials: <span class="k">true</span> }));
+app.<span class="f">use</span>(<span class="s">'/trpc/*'</span>, <span class="f">trpcServer</span>({ router: appRouter, createContext }));   <span class="c">// tRPC をマウント</span>
+app.<span class="f">get</span>(<span class="s">'/health'</span>, (c) =&gt; c.<span class="f">json</span>({ status: <span class="s">'ok'</span> }));                  <span class="c">// ヘルスチェック</span>
+
+<span class="k">const</span> port = <span class="f">Number</span>(process.env.TRPC_PORT) || <span class="t">3001</span>;
+<span class="f">serve</span>({ fetch: app.fetch, port });</pre>
+        </div>
+        <ul>
+          <li><strong>なぜ Hono か</strong>：軽量で Web 標準（Fetch API）ベースのため、tRPC の fetch アダプターとそのまま組み合わせられます。<code>/health</code> のような tRPC 以外のエンドポイントも同じサーバーに置けます。</li>
+          <li><strong>CORS</strong>：開発時は Vite のプロキシ経由で同一オリジンになるため、通常は CORS は使われません。tRPC サーバーに直接アクセスする場合の備えです。</li>
+          <li><strong>起動</strong>：<code>tsx watch --env-file=.env server/index.ts</code>。ファイルを保存すると自動で再起動し、<code>.env</code> から <code>DATABASE_URL</code> などを読み込みます。</li>
+        </ul>
+
+        <!-- ===================================================== -->
+        <h2 id="dev-path"><span class="num">07</span>開発時の通信経路</h2>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 900 200" role="img" aria-labelledby="dp-t">
+              <title id="dp-t">ブラウザから tRPC サーバーまでの経路</title>
+              <g class="c-client"><rect class="node" x="16" y="60" width="150" height="70" rx="10"/>
+                <text x="91" y="88" text-anchor="middle" class="t-sm t-b">ブラウザ</text>
+                <text x="91" y="108" text-anchor="middle" class="t-xs t-muted mono">fetch('/trpc/…')</text></g>
+              <g class="c-proxy"><rect class="node" x="226" y="60" width="150" height="70" rx="10"/>
+                <text x="301" y="88" text-anchor="middle" class="t-sm t-b">Caddy</text>
+                <text x="301" y="108" text-anchor="middle" class="t-xs t-muted mono">:443</text></g>
+              <g class="c-client"><rect class="node" x="436" y="60" width="190" height="70" rx="10"/>
+                <text x="531" y="88" text-anchor="middle" class="t-sm t-b">Vite</text>
+                <text x="531" y="108" text-anchor="middle" class="t-xs t-muted mono">:5173 server.proxy</text></g>
+              <g class="c-server"><rect class="node" x="686" y="60" width="198" height="70" rx="10"/>
+                <text x="785" y="88" text-anchor="middle" class="t-sm t-b">Hono + tRPC</text>
+                <text x="785" y="108" text-anchor="middle" class="t-xs t-muted mono">localhost:3001</text></g>
+              <path class="edge-c c-proxy" d="M166 95 H222" marker-end="url(#ah-proxy)"/>
+              <text x="194" y="86" text-anchor="middle" class="t-xs t-muted">HTTPS</text>
+              <path class="edge-c c-proxy" d="M376 95 H432" marker-end="url(#ah-proxy)"/>
+              <text x="404" y="86" text-anchor="middle" class="t-xs t-muted">/* → Vite</text>
+              <path class="edge-c c-server" d="M626 95 H682" marker-end="url(#ah-server)"/>
+              <text x="654" y="86" text-anchor="middle" class="t-xs t-muted">/trpc</text>
+              <text x="450" y="170" text-anchor="middle" class="t-xs t-muted">ブラウザから見るとすべて同じオリジン（https://queue-app.localhost）への通信になる</text>
+            </svg>
+          </div>
+          <figcaption>図 7-1. tRPC へのリクエストの経路</figcaption>
+        </figure>
+        <div class="code">
+          <div class="code__title">vite.config.ts（抜粋）</div>
+<pre><span class="k">const</span> trpcPort = Number.<span class="f">parseInt</span>(env.TRPC_PORT || <span class="s">'3001'</span>, <span class="t">10</span>);
+<span class="c">// …</span>
+server: {
+  proxy: {
+    <span class="s">'/trpc'</span>: { target: <span class="s">`http://localhost:</span>${trpcPort}<span class="s">`</span>, changeOrigin: <span class="k">true</span> },
+  },
+},</pre>
+        </div>
+
+        <h3 id="troubleshoot">トラブルシューティング</h3>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>症状</th><th>原因</th><th>対処</th></tr></thead>
+            <tbody>
+              <tr><td>Vite のログに <code>http proxy error: /trpc/… ECONNREFUSED</code>、整理券の発行でエラー</td><td>tRPC サーバーが起動していない</td><td><code>pnpm dev</code>（dev:client と dev:server を並列起動）で起動する。個別なら <code>pnpm dev:server</code></td></tr>
+              <tr><td>tRPC サーバーが <code>EADDRINUSE</code> で起動しない／<code>/trpc</code> が 404 になる</td><td>ポート 3000 を Electric と取り合っている</td><td><code>TRPC_PORT</code> を 3000 以外にする（既定は 3001）</td></tr>
+              <tr><td>起動時に Zod のエラーで落ちる</td><td><code>DATABASE_URL</code> が未設定・不正</td><td><code>.env</code> を確認する</td></tr>
+              <tr><td>書き込みは成功するのに 15 秒後にエラーになる</td><td>Electric から txid が届かない（Electric 停止など）</td><td><code>docker compose ps</code> で Electric の状態を確認する</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="history"><span class="num">08</span>tRPC を採用した経緯</h2>
+        <div class="compare">
+          <div class="card">
+            <h4><span class="tag c-muted">以前</span>TanStack Start のサーバー関数</h4>
+            <p><code>createServerFn</code> で書いたサーバー関数（<code>server-functions.ts</code>）から PostgreSQL に書き込んでいました。画面フレームワークと API が一体になっていました。</p>
+          </div>
+          <div class="card">
+            <h4><span class="tag c-server">現在</span>独立した Hono + tRPC サーバー</h4>
+            <p>コミット <code>445605e</code> で <code>server/</code> に移行。DB 接続（<code>pg</code>）をブラウザ側のコードから完全に切り離し、API を単体で起動・確認できるようにしました。</p>
+          </div>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="add-procedure"><span class="num">09</span>プロシージャを追加する手順</h2>
+        <p>例として「待ち行列の状態を取得する」プロシージャを追加する場合の流れです。</p>
+        <div class="flow">
+          <div class="c-domain"><b>スキーマ</b><code>shared/schemas.ts</code> に入力の Zod スキーマを用意</div>
+          <div class="c-server"><b>プロシージャ</b><code>server/routers/queue.ts</code> に <code>publicProcedure.input(…).query(…)</code> を追加</div>
+          <div class="c-server"><b>ルーター</b>新しいルーターなら <code>server/trpc/router.ts</code> に登録</div>
+          <div class="c-client"><b>呼び出し</b><code>trpc.queue.xxx.query(…)</code> がすぐ補完される</div>
+        </div>
+        <div class="code">
+          <div class="code__title">例：server/routers/queue.ts に追加</div>
+<pre><span class="k">const</span> QueueStatusRowSchema = z.<span class="f">object</span>({ status: z.<span class="f">enum</span>([<span class="s">'open'</span>, <span class="s">'closed'</span>]) });
+
+getQueueStatus: publicProcedure
+  .<span class="f">input</span>(UuidSchema)
+  .<span class="f">query</span>(<span class="k">async</span> ({ input: queueId, ctx }) =&gt; {
+    <span class="k">const</span> result = <span class="k">await</span> ctx.pool.<span class="f">query</span>(<span class="s">'SELECT status FROM queue WHERE id = $1'</span>, [queueId]);
+    <span class="c">// DB の行は型が付かないので、as ではなく Zod で検証して型を付ける</span>
+    <span class="k">return</span> QueueStatusRowSchema.<span class="f">parse</span>(result.rows[<span class="t">0</span>]);
+  }),
+
+<span class="c">// クライアント側（型は自動で付く）</span>
+<span class="k">const</span> { status } = <span class="k">await</span> trpc.queue.getQueueStatus.<span class="f">query</span>(QUEUE_ID);</pre>
+        </div>
+        <div class="callout callout--warn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20zM12 10v4M12 17h.01"/></svg>
+          <div>
+            <div class="callout__title">注意点</div>
+            <ul>
+              <li>複数の SQL をまとめて実行する場合は <code>server/database/transaction.ts</code> の <code>withTransaction()</code> を使い、必要なら <code>FOR UPDATE</code> で行をロックします（<code>entry.insert</code> / <code>entry.insertEvent</code> が実例）。</li>
+              <li>すべて <code>publicProcedure</code>（認証なし）です。認証を入れる場合は <code>middleware</code> で保護されたプロシージャを作ります。</li>
+              <li>表示用のデータ取得を tRPC に追加すると、リアルタイム同期の恩恵を受けられません。画面に出すデータは Electric の Shape で同期するのが基本です。</li>
+            </ul>
+          </div>
+        </div>
+
+        <nav class="pager" aria-label="前後の資料">
+          <a href="tech-materialized-view.html"><small>← 前へ</small>マテリアライズドビュー解説</a>
+          <a class="next" href="index.html"><small>トップへ →</small>ホーム</a>
+        </nav>
+      </article>
+    </main>
+  </div>
+  <footer class="site-footer">店舗向け順番待ちアプリ 解説資料 ― tRPC</footer>
+</body>
+</html>

@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>構成・構造の解説</title>
+  <meta name="description" content="順番待ちアプリのディレクトリ構成、レイヤーの責務、モジュールの依存関係、設定ファイルの役割を解説します。">
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="assets/docs.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="brand" href="index.html"><span class="brand__mark">Q</span>順番待ちアプリ 解説資料</a>
+      <nav class="site-nav" data-site-nav aria-label="資料一覧"></nav>
+      <button class="icon-btn nav-toggle" data-nav-toggle aria-label="メニューを開く"></button>
+      <button class="icon-btn" data-theme-toggle aria-label="テーマ切り替え"></button>
+    </div>
+  </header>
+  <div class="scrim"></div>
+
+  <div class="layout">
+    <aside class="sidenav" data-sidenav></aside>
+    <main class="main">
+      <article class="doc">
+        <div class="eyebrow">Structure</div>
+        <h1>アプリ全体の構成・構造</h1>
+        <p class="lead">
+          リポジトリは、ブラウザで動く <code>app/</code>、API サーバーの <code>server/</code>、DB 定義の <code>migrations/</code> と各種設定ファイルで構成されています。
+          ここでは、どのファイルが何を担当し、どう依存し合っているかを整理します。
+        </p>
+
+        <!-- ===================================================== -->
+        <h2 id="repo"><span class="num">01</span>リポジトリ全体</h2>
+<div class="tree"><span class="d">electric-tanstack-start-db-queue-app/</span>
+<span class="g">├──</span> <span class="d">app/</span>                    <span class="lay c-client">フロントエンド</span>  <span class="cm">画面・ローカル DB・ビジネスロジック（ブラウザで動く）</span>
+<span class="g">├──</span> <span class="d">server/</span>                 <span class="lay c-server">API サーバー</span>   <span class="cm">Hono + tRPC（書き込み・採番）</span>
+<span class="g">├──</span> <span class="d">shared/</span>                 <span class="lay c-domain">共有</span>           <span class="cm">schemas.ts（app と server で共有する Zod スキーマ）</span>
+<span class="g">├──</span> <span class="d">migrations/</span>             <span class="lay c-pg">DB</span>             <span class="cm">001_create_tables.sql（テーブル・初期データ）／ 002_created_at_timestamptz.sql</span>
+<span class="g">├──</span> <span class="d">scripts/</span>                                  <span class="cm">generate-caddyfile.sh（.env から Caddyfile を生成）</span>
+<span class="g">├──</span> <span class="d">docs/</span>                                     <span class="cm">この解説資料</span>
+<span class="g">├──</span> <span class="f">vite.config.ts</span>                            <span class="cm">Vite / TanStack Start / /trpc プロキシ</span>
+<span class="g">├──</span> <span class="f">docker-compose.yml</span>                        <span class="cm">PostgreSQL・Electric のコンテナ</span>
+<span class="g">├──</span> <span class="f">Caddyfile.template</span>                        <span class="cm">HTTPS リバースプロキシの雛形</span>
+<span class="g">├──</span> <span class="f">package.json</span>                              <span class="cm">依存関係・スクリプト（dev / dev:client / dev:server …）</span>
+<span class="g">├──</span> <span class="f">pnpm-workspace.yaml</span>                       <span class="cm">pnpm の設定（overrides など）</span>
+<span class="g">├──</span> <span class="f">tsconfig.json</span>                             <span class="cm">TypeScript 設定（strict、パスエイリアス ~/）</span>
+<span class="g">├──</span> <span class="f">biome.json</span>                                <span class="cm">リンター・フォーマッター</span>
+<span class="g">├──</span> <span class="f">mise.toml</span>                                 <span class="cm">Node.js 24 / pnpm 12.21.0 / Caddy 2.11.4</span>
+<span class="g">└──</span> <span class="f">.env.example</span>                              <span class="cm">環境変数のサンプル</span></div>
+
+        <!-- ===================================================== -->
+        <h2 id="app"><span class="num">02</span>app/ ディレクトリ（フロントエンド）</h2>
+        <p>層ごとにディレクトリが分かれています。右のラベルは<a href="architecture.html#layers">アーキテクチャ解説のレイヤー図</a>と対応しています。</p>
+<div class="tree"><span class="d">app/</span>
+<span class="g">├──</span> <span class="d">routes/</span>                         <span class="lay c-client">Routes</span>
+<span class="g">│   ├──</span> <span class="f">__root.tsx</span>                  <span class="cm">HTML の骨格・&lt;head&gt;・404 画面</span>
+<span class="g">│   ├──</span> <span class="f">index.tsx</span>                   <span class="cm">/  → HomeComponent</span>
+<span class="g">│   ├──</span> <span class="f">staff/reception/index.tsx</span>   <span class="cm">/staff/reception → ReceptionComponent</span>
+<span class="g">│   ├──</span> <span class="f">staff/call/index.tsx</span>        <span class="cm">/staff/call → CallComponent</span>
+<span class="g">│   ├──</span> <span class="f">display/index.tsx</span>           <span class="cm">/display → DisplayComponent</span>
+<span class="g">│   └──</span> <span class="f">entry/$token.tsx</span>            <span class="cm">/entry/{token} → EntryComponent（$token は URL パラメータ）</span>
+<span class="g">├──</span> <span class="d">components/</span>                     <span class="lay c-client">UI</span>
+<span class="g">│   ├──</span> <span class="f">home/HomeComponent.tsx</span>
+<span class="g">│   ├──</span> <span class="f">staff/reception/ReceptionComponent.tsx</span>
+<span class="g">│   ├──</span> <span class="f">staff/call/CallComponent.tsx</span>
+<span class="g">│   ├──</span> <span class="f">display/DisplayComponent.tsx</span>
+<span class="g">│   └──</span> <span class="f">entry/EntryComponent.tsx</span>
+<span class="g">├──</span> <span class="d">query/entry/</span>                    <span class="lay c-db">Query</span>
+<span class="g">│   ├──</span> <span class="f">hooks.ts</span>                    <span class="cm">useEntryStates / useQueueStats / useWaitingEntries …</span>
+<span class="g">│   ├──</span> <span class="f">entry-states-store.ts</span>       <span class="cm">共有ライブクエリと状態の計算（全フックで 1 回だけ）</span>
+<span class="g">│   ├──</span> <span class="f">helpers.ts</span>                  <span class="cm">JOIN 結果を受付ごとにまとめて状態を計算</span>
+<span class="g">│   └──</span> <span class="f">types.ts</span>                    <span class="cm">QueueStats の再エクスポート</span>
+<span class="g">├──</span> <span class="d">usecases/</span>                       <span class="lay c-server">Usecases</span>
+<span class="g">│   ├──</span> <span class="d">entry/</span>                      <span class="cm">create-entry / call-entry / mark-entry-done / skip-entry /</span>
+<span class="g">│   │</span>                              <span class="cm">cancel-entry / add-entry-event / generate-token</span>
+<span class="g">│   ├──</span> <span class="d">queue/</span>                      <span class="cm">get-next-ticket-number（tRPC で採番）</span>
+<span class="g">│   └──</span> <span class="f">types.ts</span>                    <span class="cm">UseCaseResult / CreateEntryResult …</span>
+<span class="g">├──</span> <span class="d">domain/</span>                         <span class="lay c-domain">Domain</span>
+<span class="g">│   ├──</span> <span class="d">entry/</span>
+<span class="g">│   │   ├──</span> <span class="f">types.ts</span>                <span class="cm">Entry / EntryEvent / EntryState / EntryWithState</span>
+<span class="g">│   │   ├──</span> <span class="f">event-types.ts</span>          <span class="cm">ドメインイベント名と DB の type の相互変換</span>
+<span class="g">│   │   ├──</span> <span class="f">constants.ts</span>            <span class="cm">ENTRY_STATE / EVENT_ACTOR</span>
+<span class="g">│   │   └──</span> <span class="f">state.ts</span>                <span class="cm">calculateCurrentState / isValidStateTransition / checkEventAppend</span>
+<span class="g">│   ├──</span> <span class="d">queue/types.ts</span>              <span class="cm">QueueStats</span>
+<span class="g">│   └──</span> <span class="d">repositories/</span>               <span class="cm">EntryRepository / EntryEventRepository（インターフェース）</span>
+<span class="g">├──</span> <span class="d">infrastructure/</span>                 <span class="lay c-infra">Infrastructure</span>
+<span class="g">│   ├──</span> <span class="d">database/</span>
+<span class="g">│   │   ├──</span> <span class="f">client.ts</span>               <span class="cm">Electric の接続設定（URL・timestamptz → Date）</span>
+<span class="g">│   │   ├──</span> <span class="f">collections.ts</span>          <span class="cm">entriesCollection / entryEventsCollection</span>
+<span class="g">│   │   ├──</span> <span class="f">schemas.ts</span>              <span class="cm">shared/schemas.ts の再エクスポート ＋ JOIN 行のスキーマ</span>
+<span class="g">│   │   └──</span> <span class="d">mappers/</span>                <span class="cm">DB ↔ ドメインの変換</span>
+<span class="g">│   ├──</span> <span class="d">repositories/</span>               <span class="cm">リポジトリ実装（コレクションに insert）と factory</span>
+<span class="g">│   └──</span> <span class="d">env/env.client.ts</span>           <span class="cm">ブラウザ用環境変数の検証・LOCAL_NETWORK_BASE_URL</span>
+<span class="g">├──</span> <span class="d">client/trpc.ts</span>                  <span class="lay c-infra">Infrastructure</span>  <span class="cm">tRPC クライアント（httpBatchLink, url: /trpc）</span>
+<span class="g">├──</span> <span class="d">utils/uuid.ts</span>                                    <span class="cm">crypto.randomUUID() のラッパー</span>
+<span class="g">├──</span> <span class="f">router.tsx</span>                                       <span class="cm">TanStack Router の生成</span>
+<span class="g">├──</span> <span class="f">routeTree.gen.ts</span>                                 <span class="cm">ルート定義から自動生成（編集しない）</span>
+<span class="g">├──</span> <span class="f">globals.css</span>                                      <span class="cm">Tailwind CSS の読み込み</span>
+<span class="g">└──</span> <span class="f">env.d.ts</span>                                         <span class="cm">import.meta.env の型</span></div>
+
+        <!-- ===================================================== -->
+        <h2 id="server"><span class="num">03</span>server/ ディレクトリ（API サーバー）</h2>
+<div class="tree"><span class="d">server/</span>
+<span class="g">├──</span> <span class="f">index.ts</span>              <span class="cm">Hono アプリ。/trpc/* に CORS と tRPC ミドルウェア、/health、serve(port)</span>
+<span class="g">├──</span> <span class="d">trpc/</span>
+<span class="g">│   ├──</span> <span class="f">init.ts</span>           <span class="cm">initTRPC → router / publicProcedure / middleware</span>
+<span class="g">│   ├──</span> <span class="f">context.ts</span>        <span class="cm">リクエストごとのコンテキスト（pg の pool）</span>
+<span class="g">│   └──</span> <span class="f">router.ts</span>         <span class="cm">appRouter = { entry, queue } と型 AppRouter</span>
+<span class="g">├──</span> <span class="d">routers/</span>
+<span class="g">│   ├──</span> <span class="f">entry.ts</span>          <span class="cm">insert（ロックして採番）/ insertEvent（ロックして遷移を検証）。txid を返す</span>
+<span class="g">│   └──</span> <span class="f">queue.ts</span>          <span class="cm">getNextTicketNumber（仮の番号: MAX(number) + 1）</span>
+<span class="g">└──</span> <span class="d">database/</span>
+<span class="g">    ├──</span> <span class="f">pool.ts</span>           <span class="cm">DATABASE_URL を Zod で検証して pg.Pool を作成</span>
+<span class="g">    └──</span> <span class="f">transaction.ts</span>    <span class="cm">withTransaction（BEGIN / COMMIT / ROLLBACK）</span></div>
+        <div class="callout callout--note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/></svg>
+          <div>
+            <div class="callout__title">app と server で共有しているコード</div>
+            <ul>
+              <li><code>shared/schemas.ts</code>：Zod スキーマ。実行環境に依存しない（<code>import.meta.env</code> や <code>pg</code> を参照しない）ため、ブラウザと Node.js の両方から読み込めます。</li>
+              <li><code>app/domain/entry</code>：状態遷移の判定（<code>checkEventAppend</code>）。ドメイン層はフレームワークに依存しない純粋なコードなので、サーバーも同じルールで検証するために読み込んでいます。</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="responsibilities"><span class="num">04</span>各レイヤーの責務</h2>
+        <div class="cards">
+          <div class="card card--accent c-client">
+            <h4>Routes</h4>
+            <p>URL と画面の対応付け。画面を <code>&lt;ClientOnly&gt;</code> で包み、ブラウザでだけ描画させる。ロジックは持たない。</p>
+          </div>
+          <div class="card card--accent c-client">
+            <h4>Components</h4>
+            <p>画面の描画と操作の受付。フックでデータを受け取り、ボタン操作でユースケースを呼ぶ。持つのは UI の状態（選択中の人数など）だけ。</p>
+          </div>
+          <div class="card card--accent c-db">
+            <h4>Query</h4>
+            <p>コレクションに対するライブクエリと、そこから派生するビューを React のフックとして提供する。</p>
+          </div>
+          <div class="card card--accent c-server">
+            <h4>Usecases</h4>
+            <p>「整理券を発行する」「呼び出す」など 1 つの操作の手順。ID・トークンの生成、リポジトリの呼び出し、結果の返却を行う。</p>
+          </div>
+          <div class="card card--accent c-domain">
+            <h4>Domain</h4>
+            <p>型・定数・状態の計算・遷移ルール・リポジトリのインターフェース。React や TanStack DB には依存しない純粋なコード。</p>
+          </div>
+          <div class="card card--accent c-infra">
+            <h4>Infrastructure</h4>
+            <p>外部とのつなぎ込み。コレクション定義（Electric・tRPC）、リポジトリ実装、Zod スキーマ、マッパー、環境変数。</p>
+          </div>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="dependencies"><span class="num">05</span>モジュールの依存関係</h2>
+        <p>矢印は「import している」方向です。中心のドメイン層には多くの矢印が入りますが、ドメイン層から外へ出る矢印はありません。</p>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 900 400" role="img" aria-labelledby="dep-t">
+              <title id="dep-t">モジュールの依存関係図</title>
+              <g class="c-client">
+                <rect class="node" x="16" y="30" width="150" height="44" rx="9"/><text x="91" y="57" text-anchor="middle" class="t-sm t-b mono">routes</text>
+                <rect class="node" x="16" y="150" width="150" height="44" rx="9"/><text x="91" y="177" text-anchor="middle" class="t-sm t-b mono">components</text>
+              </g>
+              <g class="c-db"><rect class="node" x="226" y="30" width="150" height="44" rx="9"/><text x="301" y="57" text-anchor="middle" class="t-sm t-b mono">query</text></g>
+              <g class="c-server"><rect class="node" x="226" y="150" width="150" height="44" rx="9"/><text x="301" y="177" text-anchor="middle" class="t-sm t-b mono">usecases</text></g>
+              <g class="c-infra">
+                <rect class="node" x="226" y="270" width="150" height="44" rx="9"/><text x="301" y="290" text-anchor="middle" class="t-xs t-b mono">infrastructure/</text><text x="301" y="305" text-anchor="middle" class="t-xs t-b mono">repositories</text>
+                <rect class="node" x="450" y="270" width="170" height="44" rx="9"/><text x="535" y="290" text-anchor="middle" class="t-xs t-b mono">infrastructure/</text><text x="535" y="305" text-anchor="middle" class="t-xs t-b mono">database</text>
+                <rect class="node" x="680" y="270" width="170" height="44" rx="9"/><text x="765" y="297" text-anchor="middle" class="t-sm t-b mono">client/trpc</text>
+                <rect class="node" x="680" y="348" width="170" height="40" rx="9"/><text x="765" y="373" text-anchor="middle" class="t-xs t-b mono">infrastructure/env</text>
+              </g>
+              <g class="c-domain"><rect class="node" x="450" y="144" width="170" height="56" rx="10" style="stroke-width:2.4"/>
+                <text x="535" y="170" text-anchor="middle" class="t-b mono">domain</text><text x="535" y="188" text-anchor="middle" class="t-xs t-muted">外部に依存しない</text></g>
+              <g class="c-muted"><rect class="box-2" x="450" y="30" width="170" height="44" rx="9"/><text x="535" y="57" text-anchor="middle" class="t-sm mono">utils/uuid</text></g>
+              <g class="c-server"><rect class="zone" x="680" y="140" width="170" height="64" rx="10"/>
+                <text x="765" y="166" text-anchor="middle" class="t-xs t-b mono">server/trpc/router</text><text x="765" y="184" text-anchor="middle" class="t-xs t-muted">型 AppRouter のみ</text></g>
+
+              <!-- edges -->
+              <path class="edge" d="M91 74 V146" marker-end="url(#ah)"/>
+              <path class="edge" d="M166 162 C196 162, 196 52, 222 52" marker-end="url(#ah)"/>
+              <path class="edge" d="M166 172 H222" marker-end="url(#ah)"/>
+              <path class="edge" d="M166 184 C196 184, 196 292, 222 292" marker-end="url(#ah)"/>
+              <path class="edge" d="M91 194 V368 H676" marker-end="url(#ah)"/>
+              <text x="100" y="360" class="t-xs t-muted">QR の URL（LOCAL_NETWORK_BASE_URL）</text>
+
+              <path class="edge" d="M376 46 C420 46, 470 100, 500 140" marker-end="url(#ah)"/>
+              <path class="edge" d="M376 62 H424 V282 H446" marker-end="url(#ah)"/>
+
+              <path class="edge" d="M376 172 H446" marker-end="url(#ah)"/>
+              <path class="edge" d="M376 160 C410 160, 420 60, 446 56" marker-end="url(#ah)"/>
+              <path class="edge-c c-server" d="M376 186 C410 186, 440 240, 480 240 H720 V266" marker-end="url(#ah-server)"/>
+              <text x="560" y="232" class="t-xs" style="fill:var(--c-server)">getNextTicketNumber が直接呼ぶ</text>
+
+              <path class="edge" d="M376 292 H446" marker-end="url(#ah)"/>
+              <path class="edge dash" d="M350 270 C370 230, 470 230, 490 204" marker-end="url(#ah)"/>
+              <text x="306" y="232" class="t-xs t-muted">実装</text>
+
+              <path class="edge" d="M535 270 V204" marker-end="url(#ah)"/>
+              <path class="edge" d="M620 292 H676" marker-end="url(#ah)"/>
+              <path class="edge" d="M620 304 C650 304, 650 360, 676 362" marker-end="url(#ah)"/>
+              <path class="edge-c c-server dash" d="M765 270 V208" marker-end="url(#ah-server)"/>
+              <text x="772" y="246" class="t-xs" style="fill:var(--c-server)">import type</text>
+            </svg>
+          </div>
+          <div class="legend">
+            <span class="c-muted"><i class="line"></i>import</span>
+            <span class="c-muted"><i class="dash"></i>インターフェースの実装 / 型のみの import</span>
+          </div>
+          <figcaption>図 5-1. 依存関係 ― フロントエンドがサーバーから受け取るのは「型」だけで、実行コードは共有しない</figcaption>
+        </figure>
+        <ul>
+          <li><strong>依存性の注入</strong>：ユースケースはリポジトリの<strong>インターフェース</strong>（domain）だけを知り、実装は画面が <code>getEntryRepository()</code> などのファクトリーで取得して引数で渡します。</li>
+          <li><strong>例外</strong>：<code>getNextTicketNumber</code> だけはリポジトリを介さず、ユースケースから tRPC クライアントと Zod スキーマ（infrastructure）を直接使っています。</li>
+          <li><strong>サーバーとの境界</strong>：<code>app/client/trpc.ts</code> は <code>import type { AppRouter }</code> でサーバーの型だけを取り込みます。ビルド時に型は消えるため、サーバーのコードはブラウザに含まれません。</li>
+          <li><strong>サーバーから見た依存</strong>：<code>server/</code> は <code>shared/schemas.ts</code>（入力の検証）と <code>app/domain/entry</code>（状態遷移の判定）だけを読み込みます。どちらも実行環境に依存しないコードです。</li>
+        </ul>
+
+        <!-- ===================================================== -->
+        <h2 id="matrix"><span class="num">06</span>画面とモジュールの対応表</h2>
+        <p>各画面が使っているフック（読み取り）とユースケース（書き込み）の一覧です。</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>モジュール</th><th>受付</th><th>呼び出し</th><th>表示</th><th>スマホ</th></tr></thead>
+            <tbody>
+              <tr><td colspan="5" class="small muted"><strong>読み取り（app/query）</strong></td></tr>
+              <tr><td><code>useQueueStats</code></td><td>●</td><td></td><td>●</td><td></td></tr>
+              <tr><td><code>useWaitingEntries</code></td><td>●</td><td>●</td><td></td><td>●</td></tr>
+              <tr><td><code>useNextWaitingEntry</code></td><td></td><td>●</td><td></td><td></td></tr>
+              <tr><td><code>useCalledEntries</code></td><td></td><td>●</td><td>●</td><td></td></tr>
+              <tr><td><code>useEntryByToken</code></td><td></td><td></td><td></td><td>●</td></tr>
+              <tr><td colspan="5" class="small muted"><strong>書き込み（app/usecases）</strong></td></tr>
+              <tr><td><code>getNextTicketNumber</code></td><td>●</td><td></td><td></td><td></td></tr>
+              <tr><td><code>createEntry</code></td><td>●</td><td></td><td></td><td></td></tr>
+              <tr><td><code>callEntry</code></td><td></td><td>●</td><td></td><td></td></tr>
+              <tr><td><code>markEntryDone</code></td><td></td><td>●</td><td></td><td></td></tr>
+              <tr><td><code>skipEntry</code></td><td></td><td>●</td><td></td><td></td></tr>
+              <tr><td><code>cancelEntry</code></td><td></td><td></td><td></td><td>●</td></tr>
+              <tr><td colspan="5" class="small muted"><strong>その他</strong></td></tr>
+              <tr><td><code>qrcode</code>（QR 生成）</td><td>●</td><td></td><td></td><td></td></tr>
+              <tr><td><code>@heroicons/react</code>（アイコン）</td><td>●</td><td>●</td><td></td><td>●</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="usecase-tree">ユースケースの呼び出し関係</h3>
+        <p>状態を変える 4 つの操作は、すべて共通の <code>addEntryEvent()</code> にイベントの種類と操作者を渡すだけの薄いラッパーです。<code>addEntryEvent()</code> はリポジトリの <code>findByEntryId()</code> で取得したローカルのイベント履歴を使い、<code>checkEventAppend()</code> で遷移ルールを検証してから書き込みます。</p>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 880 200" role="img" aria-labelledby="uc-t">
+              <title id="uc-t">ユースケースの呼び出し関係</title>
+              <g class="c-server">
+                <rect class="node" x="16" y="14" width="300" height="38" rx="8"/><text x="30" y="38" class="t-sm mono t-b">callEntry</text><text x="304" y="38" text-anchor="end" class="t-xs t-muted mono">EntryCalled / staff</text>
+                <rect class="node" x="16" y="60" width="300" height="38" rx="8"/><text x="30" y="84" class="t-sm mono t-b">markEntryDone</text><text x="304" y="84" text-anchor="end" class="t-xs t-muted mono">EntryDone / staff</text>
+                <rect class="node" x="16" y="106" width="300" height="38" rx="8"/><text x="30" y="130" class="t-sm mono t-b">skipEntry</text><text x="304" y="130" text-anchor="end" class="t-xs t-muted mono">EntrySkipped / staff</text>
+                <rect class="node" x="16" y="152" width="300" height="38" rx="8"/><text x="30" y="176" class="t-sm mono t-b">cancelEntry</text><text x="304" y="176" text-anchor="end" class="t-xs t-muted mono">EntryCancelled / user</text>
+              </g>
+              <path class="edge" d="M316 33 C360 33, 360 96, 396 96" marker-end="url(#ah)"/>
+              <path class="edge" d="M316 79 C360 79, 360 100, 396 100" marker-end="url(#ah)"/>
+              <path class="edge" d="M316 125 C360 125, 360 104, 396 104" marker-end="url(#ah)"/>
+              <path class="edge" d="M316 171 C360 171, 360 108, 396 108" marker-end="url(#ah)"/>
+              <g class="c-server"><rect class="node" x="400" y="76" width="190" height="52" rx="10" style="stroke-width:2.2"/>
+                <text x="495" y="99" text-anchor="middle" class="t-b mono">addEntryEvent</text>
+                <text x="495" y="117" text-anchor="middle" class="t-xs t-muted">遷移を検証 → UUID 生成</text></g>
+              <path class="edge" d="M590 102 H616" marker-end="url(#ah)"/>
+              <g class="c-infra"><rect class="node" x="620" y="76" width="250" height="52" rx="10"/>
+                <text x="745" y="99" text-anchor="middle" class="t-sm t-b mono">EntryEventRepository</text>
+                <text x="745" y="117" text-anchor="middle" class="t-xs t-muted mono">collection.insert → settled</text></g>
+            </svg>
+          </div>
+          <figcaption>図 6-1. 状態を変えるユースケース ― 違いはイベントの種類と操作者だけ</figcaption>
+        </figure>
+
+        <!-- ===================================================== -->
+        <h2 id="config"><span class="num">07</span>設定ファイルの役割</h2>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>ファイル</th><th>主な設定</th></tr></thead>
+            <tbody>
+              <tr><td><code>vite.config.ts</code></td><td><code>tanstackStart({ srcDirectory: './app' })</code>、React・Tailwind・tsconfig パスのプラグイン、起動時に HTTPS の URL を表示するプラグイン、<code>server.proxy['/trpc']</code> → <code>http://localhost:{TRPC_PORT || 3001}</code>、<code>host: 0.0.0.0</code></td></tr>
+              <tr><td><code>package.json</code></td><td><code>dev</code>（<code>pnpm run --parallel "/^dev:/"</code>）、<code>dev:client</code>（vite）、<code>dev:server</code>（<code>tsx watch --env-file=.env server/index.ts</code>）、<code>build</code>、<code>lint</code> / <code>format</code> / <code>check</code>（Biome）、<code>generate:caddy</code></td></tr>
+              <tr><td><code>docker-compose.yml</code></td><td>postgres（<code>wal_level=logical</code>、5432、healthcheck）と electric（3000 / 5133、<code>ELECTRIC_INSECURE</code>、postgres の起動を待つ）</td></tr>
+              <tr><td><code>Caddyfile.template</code></td><td>ホスト名と LAN IP の 2 つのサイト。<code>/v1/*</code> → <code>localhost:3000</code>、その他 → Vite、WebSocket 対応、<code>tls internal</code></td></tr>
+              <tr><td><code>tsconfig.json</code></td><td>ES2022、<code>strict</code>、<code>moduleResolution: bundler</code>、パスエイリアス <code>~/*</code> → <code>./app/*</code>、型チェック対象は <code>app/</code>・<code>server/</code>・<code>shared/</code></td></tr>
+              <tr><td><code>biome.json</code></td><td>リント・フォーマットのルール（ESLint / Prettier から移行）。対象は <code>app/</code>・<code>server/</code>・<code>shared/</code></td></tr>
+              <tr><td><code>pnpm-workspace.yaml</code></td><td>esbuild のビルド許可、<code>minimumReleaseAgeExclude</code>、vite の overrides</td></tr>
+              <tr><td><code>mise.toml</code></td><td>Node.js 24、pnpm 12.21.0、Caddy 2.11.4 のバージョン固定</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="conventions"><span class="num">08</span>命名とコーディングの約束</h2>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>対象</th><th>約束</th><th>例</th></tr></thead>
+            <tbody>
+              <tr><td>画面コンポーネント</td><td>PascalCase ＋ <code>Component</code>、default export</td><td><code>ReceptionComponent.tsx</code></td></tr>
+              <tr><td>それ以外のファイル</td><td>kebab-case</td><td><code>create-entry.ts</code>、<code>entry-event-mapper.ts</code></td></tr>
+              <tr><td>ルートファイル</td><td>TanStack Router のファイルベースルーティング。<code>$</code> は URL パラメータ</td><td><code>entry/$token.tsx</code></td></tr>
+              <tr><td>インポート</td><td><code>app/</code> 内はエイリアス <code>~/</code> を使う</td><td><code>import { createEntry } from '~/usecases/entry'</code></td></tr>
+              <tr><td>まとめ出し</td><td>各ディレクトリの <code>index.ts</code> から再エクスポート</td><td><code>app/domain/entry/index.ts</code></td></tr>
+              <tr><td>定数</td><td>UPPER_SNAKE_CASE ＋ <code>as const satisfies</code></td><td><code>ENTRY_STATE</code>、<code>ENTRY_EVENT_TYPE</code></td></tr>
+              <tr><td>DB の値</td><td>snake_case のまま扱い、ドメインへはマッパーで変換</td><td><code>public_token</code> → <code>token</code></td></tr>
+              <tr><td>コメント</td><td>日本語の JSDoc で関数・型の意図を書く</td><td><code>/** 新規エントリーを作成するユースケース */</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="generated">自動生成されるファイル</h3>
+        <ul>
+          <li><code>app/routeTree.gen.ts</code>：<code>app/routes/</code> のファイル構成から TanStack Start のプラグインが生成します。手で編集しません。</li>
+          <li><code>Caddyfile</code>：<code>pnpm generate:caddy</code> が <code>.env</code> の値を <code>Caddyfile.template</code> に埋め込んで生成します。</li>
+        </ul>
+
+        <nav class="pager" aria-label="前後の資料">
+          <a href="architecture.html"><small>← 前へ</small>アーキテクチャの解説</a>
+          <a class="next" href="tech-tanstack-db-electric.html"><small>次へ →</small>TanStack DB × Electric</a>
+        </nav>
+      </article>
+    </main>
+  </div>
+  <footer class="site-footer">店舗向け順番待ちアプリ 解説資料 ― 構成・構造</footer>
+</body>
+</html>

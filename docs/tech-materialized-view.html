@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>マテリアライズドビュー解説</title>
+  <meta name="description" content="順番待ちアプリのマテリアライズドビューの解説。状態を保存せずイベントから導出するビューを、なぜ・どこで・どう作っているかを図で説明します。">
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="assets/docs.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="brand" href="index.html"><span class="brand__mark">Q</span>順番待ちアプリ 解説資料</a>
+      <nav class="site-nav" data-site-nav aria-label="資料一覧"></nav>
+      <button class="icon-btn nav-toggle" data-nav-toggle aria-label="メニューを開く"></button>
+      <button class="icon-btn" data-theme-toggle aria-label="テーマ切り替え"></button>
+    </div>
+  </header>
+  <div class="scrim"></div>
+
+  <div class="layout">
+    <aside class="sidenav" data-sidenav></aside>
+    <main class="main">
+      <article class="doc">
+        <div class="eyebrow">Tech Deep Dive</div>
+        <h1>マテリアライズドビュー解説</h1>
+        <p class="lead">
+          このアプリは受付の「状態」を保存せず、イベントの履歴から毎回計算します。
+          その計算結果を画面にすぐ渡せる形で持っておくしくみが、このアプリでいう<strong>マテリアライズドビュー</strong>です。
+          一般的な DB の機能とどう違うのか、なぜブラウザ側で作るのか、どう組み立てて更新しているのかを解説します。
+        </p>
+        <div class="doc-meta">
+          <span class="chip"><span class="dot c-db"></span>useLiveQuery</span>
+          <span class="chip"><span class="dot c-domain"></span>calculateCurrentState</span>
+          <span class="chip"><span class="dot c-client"></span>app/query/entry/hooks.ts</span>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="what"><span class="num">01</span>マテリアライズドビューとは</h2>
+        <p>
+          データベースの<strong>ビュー（VIEW）</strong>は「保存されたクエリ」で、参照するたびに元のテーブルから計算されます。
+          <strong>マテリアライズドビュー（MATERIALIZED VIEW）</strong>は、その計算結果を保存しておき、すぐに読めるようにしたものです。
+          このアプリでは、同じ考え方を<strong>ブラウザ内のライブクエリ</strong>で実現しています。
+        </p>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 900 300" role="img" aria-labelledby="kind-t">
+              <title id="kind-t">VIEW、MATERIALIZED VIEW、ライブクエリの比較</title>
+              <!-- VIEW -->
+              <g class="c-infra"><rect class="zone" x="10" y="10" width="280" height="280" rx="14"/>
+                <text x="26" y="36" class="t-b">VIEW（PostgreSQL）</text>
+                <text x="26" y="54" class="t-xs t-muted">保存されたクエリ</text></g>
+              <g class="c-pg"><rect class="node" x="30" y="76" width="100" height="40" rx="8"/><text x="80" y="101" text-anchor="middle" class="t-xs t-b">テーブル</text></g>
+              <g class="c-infra"><rect class="box" x="170" y="76" width="100" height="40" rx="8"/><text x="220" y="101" text-anchor="middle" class="t-xs t-b">VIEW</text></g>
+              <path class="edge" d="M130 96 H166" marker-end="url(#ah)"/>
+              <text x="150" y="140" text-anchor="middle" class="t-xs t-muted">参照のたびに計算</text>
+              <g class="t-xs"><text x="30" y="186" class="t-xs">・結果は保存しない</text><text x="30" y="208" class="t-xs">・常に最新だが毎回コストがかかる</text><text x="30" y="230" class="t-xs">・変更の通知はない</text></g>
+
+              <!-- MV -->
+              <g class="c-infra"><rect class="zone" x="310" y="10" width="280" height="280" rx="14"/>
+                <text x="326" y="36" class="t-b">MATERIALIZED VIEW</text>
+                <text x="326" y="54" class="t-xs t-muted">結果を保存したビュー（PostgreSQL）</text></g>
+              <g class="c-pg"><rect class="node" x="330" y="76" width="100" height="40" rx="8"/><text x="380" y="101" text-anchor="middle" class="t-xs t-b">テーブル</text></g>
+              <g class="c-infra"><rect class="node" x="470" y="76" width="100" height="40" rx="8"/><text x="520" y="96" text-anchor="middle" class="t-xs t-b">保存された</text><text x="520" y="110" text-anchor="middle" class="t-xs t-b">結果</text></g>
+              <path class="edge dash" d="M430 96 H466" marker-end="url(#ah)"/>
+              <text x="450" y="140" text-anchor="middle" class="t-xs t-muted mono">REFRESH 時だけ再計算</text>
+              <g class="t-xs"><text x="330" y="186" class="t-xs">・読むのは速い</text><text x="330" y="208" class="t-xs">・REFRESH するまで古いまま</text><text x="330" y="230" class="t-xs">・再計算は全体をやり直す</text></g>
+
+              <!-- Live query -->
+              <g class="c-db"><rect class="zone" x="610" y="10" width="280" height="280" rx="14" style="stroke-dasharray:none"/>
+                <text x="626" y="36" class="t-b">ライブクエリ（このアプリ）</text>
+                <text x="626" y="54" class="t-xs t-muted">ブラウザ内で結果を保持し続ける</text></g>
+              <g class="c-db"><rect class="node" x="630" y="76" width="100" height="40" rx="8"/><text x="680" y="101" text-anchor="middle" class="t-xs t-b">コレクション</text></g>
+              <g class="c-client"><rect class="node" x="770" y="76" width="100" height="40" rx="8"/><text x="820" y="96" text-anchor="middle" class="t-xs t-b">保持された</text><text x="820" y="110" text-anchor="middle" class="t-xs t-b">結果</text></g>
+              <path class="edge-c c-db" d="M730 96 H766" marker-end="url(#ah-db)"/>
+              <text x="750" y="140" text-anchor="middle" class="t-xs" style="fill:var(--c-db)">変更のたびに差分で更新</text>
+              <g class="t-xs"><text x="630" y="186" class="t-xs">・読むのは速い（計算済み）</text><text x="630" y="208" class="t-xs">・同期でデータが届くと自動で最新に</text><text x="630" y="230" class="t-xs">・結果が変わると画面が再描画される</text><text x="630" y="252" class="t-xs">・ページを閉じれば消える（再計算可能）</text></g>
+            </svg>
+          </div>
+          <figcaption>図 1-1. 3 種類の「ビュー」― このアプリのビューは「保存しないが、計算済みの結果を持ち続ける」</figcaption>
+        </figure>
+        <div class="callout callout--note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/></svg>
+          <div>
+            <p>このアプリのコードやコメントで「マテリアライズドビュー」と呼んでいるのは、PostgreSQL の <code>MATERIALIZED VIEW</code> ではなく、<strong>TanStack DB のライブクエリと、そこから派生させた React のフック</strong>のことです。DB にビューは作っていません。</p>
+          </div>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="why"><span class="num">02</span>なぜビューが必要なのか</h2>
+        <p>
+          このアプリは<strong>イベントソーシング</strong>を採用しており、データベースには「事実」だけが保存されています。
+          画面が欲しいのは「いま待機中の受付はどれか」といった<strong>解釈</strong>なので、事実から解釈を作る層が必要になります。それがビューです。
+        </p>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 900 240" role="img" aria-labelledby="fact-t">
+              <title id="fact-t">事実と解釈の関係</title>
+              <g class="c-pg"><rect class="zone" x="10" y="14" width="330" height="212" rx="14"/>
+                <text x="26" y="40" class="t-b">事実（保存・同期される）</text></g>
+              <g class="c-client"><rect class="node" x="30" y="56" width="290" height="58" rx="10"/>
+                <text x="46" y="80" class="t-sm t-b mono">entry</text><text x="46" y="100" class="t-xs t-muted">受付があったこと（番号・人数・トークン）。変わらない</text></g>
+              <g class="c-domain"><rect class="node" x="30" y="128" width="290" height="80" rx="10"/>
+                <text x="46" y="152" class="t-sm t-b mono">entry_event</text><text x="46" y="172" class="t-xs t-muted">何が起きたか（呼んだ・完了した…）。</text><text x="46" y="190" class="t-xs t-muted">追記されるだけ</text></g>
+
+              <path class="edge-c c-db" d="M340 120 H420" marker-end="url(#ah-db)"/>
+              <text x="380" y="110" text-anchor="middle" class="t-xs t-b" style="fill:var(--c-db)">導出</text>
+
+              <g class="c-db"><rect class="zone" x="424" y="14" width="466" height="212" rx="14" style="stroke-dasharray:none"/>
+                <text x="440" y="40" class="t-b">解釈（ビュー：保存しない）</text></g>
+              <g class="c-client">
+                <rect class="node" x="444" y="56" width="210" height="44" rx="9"/><text x="549" y="76" text-anchor="middle" class="t-xs t-b">各受付の現在の状態</text><text x="549" y="92" text-anchor="middle" class="t-xs t-muted">waiting / called / done …</text>
+                <rect class="node" x="664" y="56" width="206" height="44" rx="9"/><text x="767" y="76" text-anchor="middle" class="t-xs t-b">待機中の一覧</text><text x="767" y="92" text-anchor="middle" class="t-xs t-muted">番号の小さい順</text>
+                <rect class="node" x="444" y="112" width="210" height="44" rx="9"/><text x="549" y="132" text-anchor="middle" class="t-xs t-b">次に呼ぶ受付</text><text x="549" y="148" text-anchor="middle" class="t-xs t-muted">待機中の先頭 1 件</text>
+                <rect class="node" x="664" y="112" width="206" height="44" rx="9"/><text x="767" y="132" text-anchor="middle" class="t-xs t-b">呼び出し中の一覧</text><text x="767" y="148" text-anchor="middle" class="t-xs t-muted">呼び出し時刻の新しい順</text>
+                <rect class="node" x="444" y="168" width="210" height="44" rx="9"/><text x="549" y="188" text-anchor="middle" class="t-xs t-b">統計</text><text x="549" y="204" text-anchor="middle" class="t-xs t-muted">件数・平均待ち時間</text>
+                <rect class="node" x="664" y="168" width="206" height="44" rx="9"/><text x="767" y="188" text-anchor="middle" class="t-xs t-b">自分の受付（スマホ）</text><text x="767" y="204" text-anchor="middle" class="t-xs t-muted">トークンで 1 件</text>
+              </g>
+            </svg>
+          </div>
+          <figcaption>図 2-1. 事実と解釈 ― 保存するのは左側だけ。右側はいつでも左側から作り直せる</figcaption>
+        </figure>
+        <div class="compare">
+          <div class="card card--accent c-ok">
+            <h4>保存しないことの利点</h4>
+            <ul>
+              <li>「状態の列」を取り合う競合が起きない（書き込みは追記だけ）</li>
+              <li>ビューの計算方法を変えても、データの移行が要らない</li>
+              <li>どの端末も同じ事実から同じ計算をするので、結果が一致する</li>
+            </ul>
+          </div>
+          <div class="card card--accent c-warn">
+            <h4>そのぶん必要になること</h4>
+            <ul>
+              <li>計算のコストを抑える工夫（差分更新・メモ化）</li>
+              <li>計算に必要な事実をすべて手元に持っておくこと（同期）</li>
+              <li>計算ロジックを 1 か所にまとめておくこと（ドメイン層）</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="where"><span class="num">03</span>どこで作るか：サーバーかクライアントか</h2>
+        <p>PostgreSQL に <code>MATERIALIZED VIEW</code> を作ってそれを同期する方法も考えられますが、このアプリでは採用していません。</p>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 900 260" role="img" aria-labelledby="where-t">
+              <title id="where-t">サーバー側ビューとクライアント側ビューの比較</title>
+              <text x="16" y="28" class="t-sm t-b" style="fill:var(--danger)">✗ サーバー側で作る（採用しない）</text>
+              <g class="c-pg"><rect class="node" x="16" y="44" width="120" height="44" rx="8"/><text x="76" y="71" text-anchor="middle" class="t-xs t-b">テーブル</text></g>
+              <g class="c-infra"><rect class="node" x="186" y="44" width="170" height="44" rx="8"/><text x="271" y="64" text-anchor="middle" class="t-xs t-b">MATERIALIZED VIEW</text><text x="271" y="80" text-anchor="middle" class="t-xs t-muted mono">REFRESH が必要</text></g>
+              <g class="c-electric"><rect class="node" x="420" y="44" width="120" height="44" rx="8" style="opacity:.55"/><text x="480" y="71" text-anchor="middle" class="t-xs t-b">Electric</text></g>
+              <path class="edge" d="M136 66 H182" marker-end="url(#ah)"/>
+              <path class="edge dash" d="M356 66 H416" style="stroke:var(--danger)"/>
+              <text x="386" y="58" text-anchor="middle" class="t-xs t-b" style="fill:var(--danger)">✗</text>
+              <text x="570" y="62" class="t-xs">Shape は通常のテーブルの変更（WAL）を配信するもので、</text>
+              <text x="570" y="80" class="t-xs">ビューの再計算結果は流れてこない</text>
+
+              <text x="16" y="140" class="t-sm t-b" style="fill:var(--ok)">✓ クライアント側で作る（このアプリ）</text>
+              <g class="c-pg"><rect class="node" x="16" y="156" width="120" height="44" rx="8"/><text x="76" y="183" text-anchor="middle" class="t-xs t-b">テーブル</text></g>
+              <g class="c-electric"><rect class="node" x="186" y="156" width="120" height="44" rx="8"/><text x="246" y="183" text-anchor="middle" class="t-xs t-b">Electric</text></g>
+              <g class="c-db"><rect class="node" x="356" y="156" width="130" height="44" rx="8"/><text x="421" y="183" text-anchor="middle" class="t-xs t-b">コレクション</text></g>
+              <g class="c-client"><rect class="node" x="536" y="156" width="140" height="44" rx="8"/><text x="606" y="176" text-anchor="middle" class="t-xs t-b">ライブクエリ</text><text x="606" y="192" text-anchor="middle" class="t-xs t-muted">＋ 派生フック</text></g>
+              <g class="c-client"><rect class="node" x="726" y="156" width="150" height="44" rx="8"/><text x="801" y="183" text-anchor="middle" class="t-xs t-b">画面</text></g>
+              <path class="edge-c c-pg" d="M136 178 H182" marker-end="url(#ah-pg)"/>
+              <text x="159" y="170" text-anchor="middle" class="t-xs t-muted">WAL</text>
+              <path class="edge-c c-electric" d="M306 178 H352" marker-end="url(#ah-electric)"/>
+              <path class="edge-c c-db" d="M486 178 H532" marker-end="url(#ah-db)"/>
+              <path class="edge-c c-client" d="M676 178 H722" marker-end="url(#ah-client)"/>
+              <text x="450" y="236" text-anchor="middle" class="t-xs t-muted">事実（テーブルの行）だけを同期し、解釈（ビュー）は各端末で作る</text>
+            </svg>
+          </div>
+          <figcaption>図 3-1. ビューを作る場所 ― 同期するのは事実だけ</figcaption>
+        </figure>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>観点</th><th>サーバー側（MATERIALIZED VIEW）</th><th>クライアント側（ライブクエリ）</th></tr></thead>
+            <tbody>
+              <tr><td>同期との相性</td><td>Electric はテーブルの変更を配信するため、ビューの結果をそのまま同期できない</td><td>同期されたテーブルの行から作るので、そのまま使える</td></tr>
+              <tr><td>鮮度</td><td>REFRESH するまで古い。誰がいつ REFRESH するかの設計が必要</td><td>データが届いた瞬間に自動で更新</td></tr>
+              <tr><td>楽観的更新</td><td>サーバーで確定するまで反映されない</td><td>操作した瞬間の未確定の変更もビューに入る</td></tr>
+              <tr><td>計算する場所</td><td>サーバー 1 か所</td><td>各端末（全端末が同じロジックで計算）</td></tr>
+              <tr><td>向いている用途</td><td>大量データの集計、日次・月次のレポートなど確定値</td><td>画面の状態、一覧、件数など UI 向けの軽い計算</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="structure"><span class="num">04</span>このアプリのビューの構造</h2>
+        <p>ビューは 4 つの層を順に通って作られます。下の層ほど汎用的で、上の層ほど特定の画面向けです。</p>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 900 370" role="img" aria-labelledby="layer-t" style="min-width:720px">
+              <title id="layer-t">ビューを作る 4 つの層</title>
+              <!-- layer labels -->
+              <g class="t-xs t-b">
+                <text x="16" y="34" class="t-xs t-b" style="fill:var(--c-db)">層 1　コレクション</text>
+                <text x="16" y="114" class="t-xs t-b" style="fill:var(--c-domain)">層 2　ライブクエリ</text>
+                <text x="16" y="194" class="t-xs t-b" style="fill:var(--c-server)">層 3　状態の計算</text>
+                <text x="16" y="274" class="t-xs t-b" style="fill:var(--c-client)">層 4　派生ビュー</text>
+              </g>
+              <g class="t-xs t-muted">
+                <text x="16" y="52" class="t-xs t-muted">Electric で同期</text>
+                <text x="16" y="132" class="t-xs t-muted">TanStack DB・差分更新</text>
+                <text x="16" y="146" class="t-xs t-muted">アプリで 1 つだけ</text>
+                <text x="16" y="212" class="t-xs t-muted">共有ストア・ドメイン層</text>
+                <text x="16" y="226" class="t-xs t-muted">変更 1 回につき 1 回</text>
+                <text x="16" y="292" class="t-xs t-muted">useMemo・filter / sort</text>
+              </g>
+              <path d="M150 70 H890 M150 150 H890 M150 230 H890" stroke="var(--line)" stroke-dasharray="4 4"/>
+
+              <!-- layer1 -->
+              <g class="c-db">
+                <rect class="node" x="200" y="18" width="190" height="44" rx="9"/><text x="295" y="38" text-anchor="middle" class="t-xs t-b mono">entriesCollection</text><text x="295" y="54" text-anchor="middle" class="t-xs t-muted">entry の全行</text>
+                <rect class="node" x="420" y="18" width="190" height="44" rx="9"/><text x="515" y="38" text-anchor="middle" class="t-xs t-b mono">entryEventsCollection</text><text x="515" y="54" text-anchor="middle" class="t-xs t-muted">entry_event の全行</text>
+              </g>
+              <!-- layer2 -->
+              <g class="c-domain">
+                <rect class="node" x="250" y="96" width="310" height="48" rx="9"/><text x="405" y="116" text-anchor="middle" class="t-xs t-b mono">from(entry).leftJoin(event).orderBy(number)</text><text x="405" y="134" text-anchor="middle" class="t-xs t-muted">createLiveQueryCollection・全フックで共有</text>
+              </g>
+              <path class="edge" d="M295 62 V92" marker-end="url(#ah)"/>
+              <path class="edge" d="M515 62 V92" marker-end="url(#ah)"/>
+              <!-- layer3 -->
+              <g class="c-server">
+                <rect class="node" x="250" y="176" width="310" height="48" rx="9"/><text x="405" y="196" text-anchor="middle" class="t-xs t-b mono">useEntryStates()</text><text x="405" y="214" text-anchor="middle" class="t-xs t-muted">Zod で検証 → 受付ごとにまとめる → calculateCurrentState</text>
+              </g>
+              <path class="edge" d="M405 144 V172" marker-end="url(#ah)"/>
+              <!-- layer4 -->
+              <g class="c-client">
+                <rect class="node" x="170" y="256" width="150" height="44" rx="9"/><text x="245" y="276" text-anchor="middle" class="t-xs t-b mono">useQueueStats</text><text x="245" y="292" text-anchor="middle" class="t-xs t-muted">件数・平均</text>
+                <rect class="node" x="340" y="256" width="150" height="44" rx="9"/><text x="415" y="276" text-anchor="middle" class="t-xs t-b mono">useEntriesByState</text><text x="415" y="292" text-anchor="middle" class="t-xs t-muted">状態で絞る</text>
+                <rect class="node" x="520" y="256" width="160" height="44" rx="9"/><text x="600" y="276" text-anchor="middle" class="t-xs t-b mono">useWaitingEntries</text><text x="600" y="292" text-anchor="middle" class="t-xs t-muted">番号順</text>
+                <rect class="node" x="520" y="310" width="160" height="40" rx="9"/><text x="600" y="334" text-anchor="middle" class="t-xs t-b mono">useCalledEntries</text>
+                <rect class="node" x="710" y="256" width="170" height="44" rx="9"/><text x="795" y="276" text-anchor="middle" class="t-xs t-b mono">useEntryByToken</text><text x="795" y="292" text-anchor="middle" class="t-xs t-muted">トークンで 1 件（スマホ）</text>
+                <rect class="node" x="710" y="310" width="170" height="44" rx="9"/><text x="795" y="330" text-anchor="middle" class="t-xs t-b mono">useNextWaitingEntry</text><text x="795" y="346" text-anchor="middle" class="t-xs t-muted">先頭 1 件</text>
+              </g>
+              <path class="edge" d="M330 224 C300 236, 260 240, 250 252" marker-end="url(#ah)"/>
+              <path class="edge" d="M410 224 V252" marker-end="url(#ah)"/>
+              <path class="edge" d="M490 278 H516" marker-end="url(#ah)"/>
+              <path class="edge" d="M490 290 C504 300, 504 326, 516 330" marker-end="url(#ah)"/>
+              <path class="edge" d="M680 290 C694 300, 694 326, 706 330" marker-end="url(#ah)"/>
+              <path class="edge" d="M560 200 C700 200, 795 212, 795 252" marker-end="url(#ah)"/>
+            </svg>
+          </div>
+          <figcaption>図 4-1. ビューの 4 層 ― JOIN と並べ替えは TanStack DB、状態の計算は共有ストアで 1 回だけ、絞り込み・並べ替えは各フック（useMemo）</figcaption>
+        </figure>
+
+        <h3 id="structure-code">コードで追う</h3>
+        <div class="code">
+          <div class="code__title">app/query/entry/entry-states-store.ts（層 2・3）</div>
+<pre><span class="k">const</span> joinedEntryEventsQuery = <span class="f">createLiveQueryCollection</span>({                <span class="n">1</span>
+  id: <span class="s">'joined-entry-events'</span>,
+  query: (query) =&gt;
+    query
+      .<span class="f">from</span>({ entry: entriesCollection })
+      .<span class="f">leftJoin</span>({ event: entryEventsCollection }, ({ entry, event }) =&gt; <span class="f">eq</span>(entry.id, event.entry_id))
+      .<span class="f">select</span>(({ entry, event }) =&gt; ({ <span class="c">/* 受付の列 ＋ イベントの列 */</span> }))
+      .<span class="f">orderBy</span>(({ entry }) =&gt; entry.number, <span class="s">'asc'</span>),
+});
+
+<span class="k">export function</span> <span class="f">subscribeEntryStates</span>(listener: () =&gt; <span class="t">void</span>) {              <span class="n">2</span>
+  listeners.<span class="f">add</span>(listener);
+  <span class="k">if</span> (!subscription) {
+    subscription = joinedEntryEventsQuery.<span class="f">subscribeChanges</span>(notifyChange, { includeInitialState: <span class="t">true</span> });
+  }
+  <span class="k">return</span> () =&gt; { <span class="c">/* 最後のリスナーが外れたら購読を解除する */</span> };
+}
+
+<span class="k">export function</span> <span class="f">getEntryStatesSnapshot</span>(): EntryWithState[] {
+  <span class="k">if</span> (!cachedEntryStates) {                                             <span class="n">3</span>
+    <span class="k">const</span> rows = JoinedEntryEventRowsSchema.<span class="f">parse</span>(joinedEntryEventsQuery.toArray);
+    cachedEntryStates = <span class="f">buildEntryStatesFromJoinedData</span>(rows);              <span class="n">4</span>
+  }
+  <span class="k">return</span> cachedEntryStates;
+}</pre>
+        </div>
+        <div class="code">
+          <div class="code__title">app/query/entry/hooks.ts（useEntryStates）</div>
+<pre><span class="k">export function</span> <span class="f">useEntryStates</span>(): EntryWithState[] {
+  <span class="k">return</span> <span class="f">useSyncExternalStore</span>(subscribeEntryStates, getEntryStatesSnapshot, getServerEntryStatesSnapshot); <span class="n">5</span>
+}</pre>
+        </div>
+        <ol class="steps-legend">
+          <li><span class="n">1</span><span><strong>層 2</strong>：2 つのコレクションを JOIN するライブクエリを、モジュールの一番上で<strong>アプリ全体に 1 つだけ</strong>作る。どちらかのコレクションに変更が入ると、結果が差分で更新される。</span></li>
+          <li><span class="n">2</span><span>何個のフックから購読されても、ライブクエリの購読は 1 つだけ。購読者がいる間だけ同期され、いなくなると解除される。</span></li>
+          <li><span class="n">3</span><span><strong>層 3</strong>：ライブクエリが変わると計算済みの結果を捨て、次に読まれたときに 1 回だけ計算し直す。JOIN の結果は Zod で検証し、型を確定させる（イベントのない受付は event 側の列が空）。</span></li>
+          <li><span class="n">4</span><span><code>buildEntryStatesFromJoinedData()</code> が受付 ID ごとにイベントをまとめ、<code>calculateCurrentState()</code>（ドメイン層）で状態を求める。</span></li>
+          <li><span class="n">5</span><span>React の <code>useSyncExternalStore</code> で共有の結果を読む。どのフックも同じ配列を受け取るので、同じ変更に対する計算は画面全体で 1 回で済む。</span></li>
+        </ol>
+        <div class="code">
+          <div class="code__title">app/query/entry/hooks.ts（派生ビューの例）</div>
+<pre><span class="c">// 層 4：useEntryStates の結果をさらに絞り込む・並べ替える</span>
+<span class="k">export function</span> <span class="f">useEntriesByState</span>(state: EntryState) {
+  <span class="k">const</span> entryStates = <span class="f">useEntryStates</span>();
+  <span class="k">return</span> <span class="f">useMemo</span>(() =&gt; entryStates.<span class="f">filter</span>((e) =&gt; e.state === state), [entryStates, state]);
+}
+
+<span class="k">export function</span> <span class="f">useWaitingEntries</span>() {
+  <span class="k">const</span> waiting = <span class="f">useEntriesByState</span>(<span class="s">'waiting'</span>);
+  <span class="k">return</span> <span class="f">useMemo</span>(() =&gt; [...waiting].<span class="f">sort</span>((a, b) =&gt; a.ticketNumber - b.ticketNumber), [waiting]);
+}
+
+<span class="k">export function</span> <span class="f">useNextWaitingEntry</span>() {
+  <span class="k">return</span> <span class="f">useWaitingEntries</span>()[<span class="t">0</span>];   <span class="c">// 次に呼ぶのは待機中の先頭</span>
+}</pre>
+        </div>
+
+        <h3 id="structure-list">ビューの一覧</h3>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>ビュー（フック）</th><th>層</th><th>中身</th><th>使う画面</th></tr></thead>
+            <tbody>
+              <tr><td><code>useEntryStates</code></td><td>2〜3</td><td>全受付 ＋ 現在の状態・最終イベント時刻（アプリ全体で 1 回だけ計算し、全フックで共有）</td><td>（他のビューの元）</td></tr>
+              <tr><td><code>useEntryByToken</code></td><td>4</td><td>トークンに一致する 1 件 ＋ 状態（<code>useEntryStates</code> から探す）</td><td>スマホ</td></tr>
+              <tr><td><code>useEntriesByState</code></td><td>4</td><td>指定した状態の受付</td><td>（他のビューの元）</td></tr>
+              <tr><td><code>useWaitingEntries</code></td><td>4</td><td>待機中を番号順に</td><td>受付・呼び出し・スマホ</td></tr>
+              <tr><td><code>useNextWaitingEntry</code></td><td>4</td><td>待機中の先頭 1 件</td><td>呼び出し</td></tr>
+              <tr><td><code>useCalledEntries</code></td><td>4</td><td>呼び出し中を呼び出し時刻の新しい順に</td><td>呼び出し・表示</td></tr>
+              <tr><td><code>useQueueStats</code></td><td>4</td><td>状態ごとの件数・平均待ち時間（完了した受付の「完了時刻 − 受付時刻」の平均）</td><td>受付・表示</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="update"><span class="num">05</span>ビューが更新される流れ</h2>
+        <p>呼び出し端末で 30 番を呼び出したとき、各端末のビューがどう更新されるかを追います。</p>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 900 270" role="img" aria-labelledby="upd-t" style="min-width:720px">
+              <title id="upd-t">イベントが届いてからビューと画面が更新されるまで</title>
+              <g class="c-electric"><rect class="node" x="16" y="96" width="140" height="64" rx="10"/>
+                <text x="86" y="120" text-anchor="middle" class="t-xs t-b">called（30 番）</text><text x="86" y="138" text-anchor="middle" class="t-xs t-muted">Electric から</text><text x="86" y="152" text-anchor="middle" class="t-xs t-muted">1 行届く</text></g>
+              <g class="c-db"><rect class="node" x="196" y="96" width="140" height="64" rx="10"/>
+                <text x="266" y="120" text-anchor="middle" class="t-xs t-b">層 1</text><text x="266" y="138" text-anchor="middle" class="t-xs t-muted">entryEvents に</text><text x="266" y="152" text-anchor="middle" class="t-xs t-muted">1 行追加</text></g>
+              <g class="c-domain"><rect class="node" x="376" y="96" width="140" height="64" rx="10"/>
+                <text x="446" y="120" text-anchor="middle" class="t-xs t-b">層 2</text><text x="446" y="138" text-anchor="middle" class="t-xs t-muted">JOIN 結果に 30 番の</text><text x="446" y="152" text-anchor="middle" class="t-xs t-muted">行が 1 つ増える</text></g>
+              <g class="c-server"><rect class="node" x="556" y="96" width="140" height="64" rx="10"/>
+                <text x="626" y="120" text-anchor="middle" class="t-xs t-b">層 3・4</text><text x="626" y="138" text-anchor="middle" class="t-xs t-muted">状態・一覧・統計を</text><text x="626" y="152" text-anchor="middle" class="t-xs t-muted">計算し直す</text></g>
+              <path class="edge-c c-electric" d="M156 128 H192" marker-end="url(#ah-electric)"/>
+              <path class="edge-c c-db" d="M336 128 H372" marker-end="url(#ah-db)"/>
+              <path class="edge-c c-domain" d="M516 128 H552" marker-end="url(#ah-domain)"/>
+
+              <rect x="376" y="176" width="140" height="22" rx="11" fill="color-mix(in srgb, var(--ok) 14%, var(--surface))" stroke="var(--ok)"/>
+              <text x="446" y="191" text-anchor="middle" class="t-xs t-b" style="fill:var(--ok)">差分だけ計算</text>
+              <rect x="556" y="176" width="140" height="22" rx="11" fill="color-mix(in srgb, var(--warn) 14%, var(--surface))" stroke="var(--warn)"/>
+              <text x="626" y="191" text-anchor="middle" class="t-xs t-b" style="fill:var(--warn)">全受付で再計算</text>
+
+              <g class="c-client">
+                <rect class="node" x="740" y="16" width="146" height="50" rx="9"/><text x="813" y="38" text-anchor="middle" class="t-xs t-b">呼び出し端末</text><text x="813" y="54" text-anchor="middle" class="t-xs t-muted">待機中→呼び出し済みへ</text>
+                <rect class="node" x="740" y="76" width="146" height="50" rx="9"/><text x="813" y="98" text-anchor="middle" class="t-xs t-b">表示端末</text><text x="813" y="114" text-anchor="middle" class="t-xs t-muted">「呼び出し中」に 30</text>
+                <rect class="node" x="740" y="136" width="146" height="50" rx="9"/><text x="813" y="158" text-anchor="middle" class="t-xs t-b">受付端末</text><text x="813" y="174" text-anchor="middle" class="t-xs t-muted">待機中 −1・呼出中 +1</text>
+                <rect class="node" x="740" y="196" width="146" height="50" rx="9"/><text x="813" y="218" text-anchor="middle" class="t-xs t-b">30 番のスマホ</text><text x="813" y="234" text-anchor="middle" class="t-xs t-muted">「呼び出し中」に変化</text>
+              </g>
+              <path class="edge-c c-client" d="M696 120 C716 120, 716 41, 736 41" marker-end="url(#ah-client)"/>
+              <path class="edge-c c-client" d="M696 124 C716 124, 716 101, 736 101" marker-end="url(#ah-client)"/>
+              <path class="edge-c c-client" d="M696 132 C716 132, 716 161, 736 161" marker-end="url(#ah-client)"/>
+              <path class="edge-c c-client" d="M696 136 C716 136, 716 221, 736 221" marker-end="url(#ah-client)"/>
+              <text x="356" y="250" text-anchor="middle" class="t-xs t-muted">どの端末も同じ事実（30 番の called）から、同じ計算で同じ結果を得る</text>
+            </svg>
+          </div>
+          <figcaption>図 5-1. ビューの更新 ― 結果が変わったビューを使っている画面だけが再描画される</figcaption>
+        </figure>
+        <ul>
+          <li><strong>層 2（ライブクエリ）</strong>は、増えた 1 行の影響だけを計算します。データが増えても更新のコストはほとんど変わりません。</li>
+          <li><strong>層 3（共有ストア）</strong>は、層 2 の結果が変わるたびに<strong>全受付</strong>について状態を計算し直します。ただし計算するのは変更 1 回につき 1 回だけで、何個のフックが使っていても増えません。</li>
+          <li><strong>層 4（useMemo）</strong>は、各フックが層 3 の結果から絞り込み・並べ替え・集計をやり直します。受付が数百件程度なら問題になりませんが、件数が増えると効いてきます（<a href="#improve">08 改善案</a>）。</li>
+        </ul>
+
+        <!-- ===================================================== -->
+        <h2 id="optimistic"><span class="num">06</span>楽観的更新とビュー</h2>
+        <p>
+          ライブクエリは「同期済みのデータ ＋ 未確定の楽観的な変更」を入力にします。そのため、操作した端末ではサーバーの応答を待たずにビューが変わり、
+          失敗した場合は楽観的な変更が取り消されてビューも元に戻ります。
+        </p>
+        <div class="flow">
+          <div class="c-client"><b>「呼び出す」</b><code>entryEventsCollection.insert(called)</code></div>
+          <div class="c-db"><b>即時</b>未確定の called がコレクションに入り、ビューが「呼び出し中」に</div>
+          <div class="c-server"><b>サーバー</b>遷移ルールを検証して INSERT。txid を返す</div>
+          <div class="c-electric"><b>確定</b>Electric から同じ txid の行が届き、未確定の行と置き換わる（ビューは変わらない）</div>
+          <div class="c-warn"><b>失敗時</b>未確定の行が消え、ビューが「待機中」に戻る</div>
+        </div>
+        <div class="callout">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
+          <div>
+            <p>楽観的な行と同期済みの行は同じ ID なので、確定の瞬間に行が二重になったり消えたりしません。ビューの側では楽観的かどうかを意識する必要がない、というのがこの組み合わせの強みです（詳しくは<a href="tech-tanstack-db-electric.html#combine">TanStack DB × Electric の txid の解説</a>）。</p>
+          </div>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="rules"><span class="num">07</span>ビューを作るときのルール</h2>
+        <div class="compare">
+          <div class="card card--accent c-ok">
+            <h4>やってよいこと</h4>
+            <ul>
+              <li>コレクションからの JOIN・絞り込み・並べ替え</li>
+              <li>状態の導出（ロジックはドメイン層の関数を呼ぶ）</li>
+              <li>件数・平均などの軽い集計</li>
+              <li>既存のビューを組み合わせた新しいビュー</li>
+            </ul>
+          </div>
+          <div class="card card--accent c-danger">
+            <h4>やってはいけないこと</h4>
+            <ul>
+              <li>ビューの結果をコレクションや DB に書き戻す（状態を保存することになる）</li>
+              <li>ビューの中で状態の判定ロジックを独自に書く（端末ごとに結果がずれる原因）</li>
+              <li>大量データの重い集計（サーバー側の仕事）</li>
+              <li>ビューの結果だけで書き込みの可否を確定させる（最終判定はサーバー）</li>
+            </ul>
+          </div>
+        </div>
+        <h3 id="rules-add">新しいビューを追加する例</h3>
+        <p>「人数の合計（待機中）」を表示したい場合は、既存のビューから派生させます。</p>
+        <div class="code">
+          <div class="code__title">追加例（イメージ）</div>
+<pre><span class="k">export function</span> <span class="f">useWaitingPeopleCount</span>(): <span class="t">number</span> {
+  <span class="k">const</span> waiting = <span class="f">useWaitingEntries</span>();
+  <span class="k">return</span> <span class="f">useMemo</span>(() =&gt; waiting.<span class="f">reduce</span>((sum, e) =&gt; sum + e.partySize, <span class="t">0</span>), [waiting]);
+}
+<span class="c">// ※ 現在の EntryWithState には人数（party_size）が含まれていないため、
+//    実際には useEntryStates の select と Entry 型に人数を追加する必要がある</span></pre>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="improve"><span class="num">08</span>現状の課題と改善案</h2>
+        <h3 id="improve-dup">1 画面で同じライブクエリが複数作られる（対応済み）</h3>
+        <p>
+          以前は、派生ビューがそれぞれ内部の <code>useEntryStates()</code> で <code>useLiveQuery</code> を呼んでいたため、1 つの画面で複数のビューを使うと
+          <strong>同じ JOIN のライブクエリと状態の計算がフックの数だけ</strong>行われていました（例：呼び出し端末では 3 回）。
+          スマホ画面の <code>useEntryByToken</code> も、別に専用のライブクエリを作っていました。
+        </p>
+        <p>
+          現在は <code>app/query/entry/entry-states-store.ts</code> で共有のライブクエリを 1 つだけ作り、状態の計算も変更 1 回につき 1 回だけ行います。
+          <code>useEntryByToken</code> も共有の結果から探す形にしたので、どの画面でも JOIN は 1 つです（<a href="#structure-code">04 コードで追う</a>）。
+        </p>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 900 230" role="img" aria-labelledby="dup-t">
+              <title id="dup-t">ライブクエリの重複と共有</title>
+              <text x="16" y="24" class="t-sm t-b">以前：呼び出し端末</text>
+              <g class="c-client">
+                <rect class="node" x="16" y="40" width="190" height="34" rx="8"/><text x="111" y="62" text-anchor="middle" class="t-xs mono">useWaitingEntries</text>
+                <rect class="node" x="16" y="84" width="190" height="34" rx="8"/><text x="111" y="106" text-anchor="middle" class="t-xs mono">useCalledEntries</text>
+                <rect class="node" x="16" y="128" width="190" height="34" rx="8"/><text x="111" y="150" text-anchor="middle" class="t-xs mono">useNextWaitingEntry</text>
+              </g>
+              <g class="c-domain">
+                <rect class="node" x="250" y="40" width="160" height="34" rx="8"/><text x="330" y="62" text-anchor="middle" class="t-xs">JOIN ＋ 状態計算 ①</text>
+                <rect class="node" x="250" y="84" width="160" height="34" rx="8"/><text x="330" y="106" text-anchor="middle" class="t-xs">JOIN ＋ 状態計算 ②</text>
+                <rect class="node" x="250" y="128" width="160" height="34" rx="8"/><text x="330" y="150" text-anchor="middle" class="t-xs">JOIN ＋ 状態計算 ③</text>
+              </g>
+              <path class="edge" d="M206 57 H246" marker-end="url(#ah)"/>
+              <path class="edge" d="M206 101 H246" marker-end="url(#ah)"/>
+              <path class="edge" d="M206 145 H246" marker-end="url(#ah)"/>
+
+              <path d="M450 16 V210" stroke="var(--line)"/>
+
+              <text x="476" y="24" class="t-sm t-b">現在：1 つを共有</text>
+              <g class="c-client">
+                <rect class="node" x="476" y="40" width="170" height="34" rx="8"/><text x="561" y="62" text-anchor="middle" class="t-xs mono">useWaitingEntries</text>
+                <rect class="node" x="476" y="84" width="170" height="34" rx="8"/><text x="561" y="106" text-anchor="middle" class="t-xs mono">useCalledEntries</text>
+                <rect class="node" x="476" y="128" width="170" height="34" rx="8"/><text x="561" y="150" text-anchor="middle" class="t-xs mono">useNextWaitingEntry</text>
+              </g>
+              <g class="c-domain"><rect class="node" x="700" y="74" width="184" height="54" rx="10" style="stroke-width:2.2"/>
+                <text x="792" y="96" text-anchor="middle" class="t-xs t-b">共有ライブクエリ</text><text x="792" y="114" text-anchor="middle" class="t-xs t-muted">1 回だけ計算</text></g>
+              <path class="edge" d="M646 57 C676 57, 676 92, 696 92" marker-end="url(#ah)"/>
+              <path class="edge" d="M646 101 H696" marker-end="url(#ah)"/>
+              <path class="edge" d="M646 145 C676 145, 676 110, 696 110" marker-end="url(#ah)"/>
+              <text x="450" y="200" text-anchor="middle" class="t-xs t-muted">createLiveQueryCollection でモジュールに 1 つ作り、useSyncExternalStore で各フックに配る</text>
+            </svg>
+          </div>
+          <figcaption>図 8-1. ライブクエリの共有 ― 計算結果は同じなので、1 つにまとめた</figcaption>
+        </figure>
+        <div class="callout callout--note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/></svg>
+          <div>
+            <p>共有のライブクエリを各フックから <code>useLiveQuery(共有コレクション)</code> で読む方法もありますが、それでは JOIN は 1 つになっても、Zod の検証と状態の計算はフックごとの <code>useMemo</code> で行われ、重複が残ります。そのため、状態の計算結果までまとめて持つ小さなストアを作り、<code>useSyncExternalStore</code> で配る形にしています。React Context でも同じことはできますが、ルートに Provider を置く必要がなく、フックの使い方も変わらないこの形を選びました。</p>
+          </div>
+        </div>
+
+        <h3 id="improve-list">改善案の一覧</h3>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>課題</th><th>影響</th><th>改善の方向性</th></tr></thead>
+            <tbody>
+              <tr><td>ビューごとに同じライブクエリが作られる</td><td>画面あたりの計算量がフックの数だけ増える</td><td><strong>対応済み</strong>：<code>createLiveQueryCollection</code> で共有のライブクエリを 1 つ作り、状態の計算結果を <code>useSyncExternalStore</code> で各フックに配る</td></tr>
+              <tr><td>状態の計算・集計が全件で再計算される</td><td>受付が増えるほど 1 回の更新が重くなる</td><td>受付ごとの最新イベントをライブクエリの <code>groupBy</code> ＋ <code>max</code> で求め、状態の導出まで差分更新の範囲に入れる</td></tr>
+              <tr><td>同期と集計の対象が全期間</td><td>データが増え続け、平均待ち時間も全期間の値になる</td><td>Shape の <code>where</code> で当日分などに絞る。過去の集計はサーバー側の集計（必要なら MATERIALIZED VIEW）に任せる</td></tr>
+              <tr><td>スマホも全受付を同期している</td><td>他のお客様の受付情報まで受信する</td><td>スマホ用の Shape を自分の受付に絞り、待ち人数などは集計済みの値で受け取る</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout callout--note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/></svg>
+          <div>
+            <p>いずれも現在の規模（1 店舗・1 日数十〜数百件）では体感できる問題ではありません。データ量や端末数が増えたときに優先して検討する項目として挙げています。</p>
+          </div>
+        </div>
+
+        <nav class="pager" aria-label="前後の資料">
+          <a href="tech-tanstack-db-electric.html"><small>← 前へ</small>TanStack DB × Electric</a>
+          <a class="next" href="tech-trpc.html"><small>次へ →</small>tRPC の技術解説</a>
+        </nav>
+      </article>
+    </main>
+  </div>
+  <footer class="site-footer">店舗向け順番待ちアプリ 解説資料 ― マテリアライズドビュー</footer>
+</body>
+</html>

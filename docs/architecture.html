@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>アーキテクチャ解説</title>
+  <meta name="description" content="順番待ちアプリのアーキテクチャ解説。プロセス構成、通信経路、読み取りと書き込みの分離、処理シーケンス、レイヤー構成を図で説明します。">
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="assets/docs.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="brand" href="index.html"><span class="brand__mark">Q</span>順番待ちアプリ 解説資料</a>
+      <nav class="site-nav" data-site-nav aria-label="資料一覧"></nav>
+      <button class="icon-btn nav-toggle" data-nav-toggle aria-label="メニューを開く"></button>
+      <button class="icon-btn" data-theme-toggle aria-label="テーマ切り替え"></button>
+    </div>
+  </header>
+  <div class="scrim"></div>
+
+  <div class="layout">
+    <aside class="sidenav" data-sidenav></aside>
+    <main class="main">
+      <article class="doc">
+        <div class="eyebrow">Architecture</div>
+        <h1>アプリ全体のアーキテクチャ</h1>
+        <p class="lead">
+          このアプリは、ブラウザ・リバースプロキシ・2 つの Node.js プロセス・2 つの Docker コンテナで動きます。
+          最大の特徴は、<strong>書き込みは tRPC、読み取りは Electric</strong> と経路を分け、ブラウザ内の TanStack DB がその 2 つを束ねている点です。
+        </p>
+
+        <!-- ===================================================== -->
+        <h2 id="overview"><span class="num">01</span>全体像</h2>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 900 400" role="img" aria-labelledby="ov-t">
+              <title id="ov-t">ブラウザ、Caddy、Vite、tRPC サーバー、Electric、PostgreSQL の構成図</title>
+
+              <!-- zones -->
+              <g class="c-client"><rect class="zone" x="10" y="44" width="220" height="300" rx="14"/>
+                <text x="24" y="66" class="t-xs t-b t-c">ブラウザ（各端末）</text></g>
+              <g class="c-infra"><rect class="zone" x="436" y="44" width="210" height="300" rx="14"/>
+                <text x="450" y="66" class="t-xs t-b t-c">Node.js（pnpm dev）</text></g>
+              <g class="c-pg"><rect class="zone" x="676" y="44" width="214" height="300" rx="14"/>
+                <text x="690" y="66" class="t-xs t-b t-c">Docker（docker compose）</text></g>
+
+              <!-- browsers -->
+              <g class="c-client">
+                <rect class="node" x="24" y="80" width="192" height="110" rx="10"/>
+                <text x="40" y="104" class="t-b">PC / タブレット</text>
+                <text x="40" y="122" class="t-xs t-muted mono">https://queue-app.localhost</text>
+                <rect class="box" x="40" y="134" width="160" height="42" rx="7"/>
+                <text x="120" y="152" text-anchor="middle" class="t-xs t-b">React 画面</text>
+                <text x="120" y="168" text-anchor="middle" class="t-xs" style="fill:var(--c-db)">TanStack DB コレクション</text>
+
+                <rect class="node" x="24" y="212" width="192" height="110" rx="10"/>
+                <text x="40" y="236" class="t-b">お客様スマホ</text>
+                <text x="40" y="254" class="t-xs t-muted mono">https://192.168.x.x</text>
+                <rect class="box" x="40" y="266" width="160" height="42" rx="7"/>
+                <text x="120" y="284" text-anchor="middle" class="t-xs t-b">React 画面</text>
+                <text x="120" y="300" text-anchor="middle" class="t-xs" style="fill:var(--c-db)">TanStack DB コレクション</text>
+              </g>
+
+              <!-- caddy -->
+              <g class="c-proxy">
+                <rect class="node" x="276" y="150" width="128" height="96" rx="10"/>
+                <text x="340" y="178" text-anchor="middle" class="t-b">Caddy</text>
+                <text x="340" y="198" text-anchor="middle" class="t-xs t-muted">:443 HTTPS</text>
+                <text x="340" y="216" text-anchor="middle" class="t-xs t-muted">TLS 終端</text>
+                <text x="340" y="232" text-anchor="middle" class="t-xs t-muted">パスで振り分け</text>
+              </g>
+              <path class="edge-c c-proxy" d="M216 135 C246 135, 246 180, 272 180" marker-end="url(#ah-proxy)"/>
+              <path class="edge-c c-proxy" d="M216 267 C246 267, 246 216, 272 216" marker-end="url(#ah-proxy)"/>
+
+              <!-- node -->
+              <g class="c-client">
+                <rect class="node" x="450" y="80" width="182" height="96" rx="10"/>
+                <text x="541" y="104" text-anchor="middle" class="t-b">Vite 開発サーバー</text>
+                <text x="541" y="122" text-anchor="middle" class="t-xs t-muted mono">:5173 ・ dev:client</text>
+                <text x="541" y="142" text-anchor="middle" class="t-xs t-muted">TanStack Start（画面・HMR）</text>
+                <text x="541" y="160" text-anchor="middle" class="t-xs t-muted">/trpc をプロキシ</text>
+              </g>
+              <g class="c-server">
+                <rect class="node" x="450" y="232" width="182" height="96" rx="10"/>
+                <text x="541" y="256" text-anchor="middle" class="t-b">Hono + tRPC</text>
+                <text x="541" y="274" text-anchor="middle" class="t-xs t-muted mono">:3001 ・ dev:server</text>
+                <text x="541" y="294" text-anchor="middle" class="t-xs t-muted">書き込み・採番</text>
+                <text x="541" y="312" text-anchor="middle" class="t-xs t-muted">pg Pool</text>
+              </g>
+              <path class="edge-c c-proxy" d="M404 180 C426 180, 426 128, 446 128" marker-end="url(#ah-proxy)"/>
+              <text x="410" y="140" class="t-xs t-muted">/*</text>
+              <path class="edge-c c-server" d="M541 176 V228" marker-end="url(#ah-server)"/>
+              <text x="550" y="206" class="t-xs t-b" style="fill:var(--c-server)">/trpc/*</text>
+
+              <!-- docker -->
+              <g class="c-electric">
+                <rect class="node" x="690" y="80" width="186" height="96" rx="10"/>
+                <text x="783" y="104" text-anchor="middle" class="t-b">ElectricSQL</text>
+                <text x="783" y="122" text-anchor="middle" class="t-xs t-muted mono">:3000</text>
+                <text x="783" y="142" text-anchor="middle" class="t-xs t-muted">Shape API（読み取り専用）</text>
+                <text x="783" y="160" text-anchor="middle" class="t-xs t-muted">HTTP ロングポーリング</text>
+              </g>
+              <g class="c-pg">
+                <path class="node" d="M700 236 v76 a83 12 0 0 0 166 0 v-76"/>
+                <ellipse class="node" cx="783" cy="236" rx="83" ry="12"/>
+                <text x="783" y="272" text-anchor="middle" class="t-b">PostgreSQL 17</text>
+                <text x="783" y="290" text-anchor="middle" class="t-xs t-muted mono">:5432</text>
+                <text x="783" y="308" text-anchor="middle" class="t-xs t-muted mono">wal_level=logical</text>
+              </g>
+              <path class="edge-c c-electric" d="M340 150 V24 H783 V76" marker-end="url(#ah-electric)"/>
+              <text x="560" y="18" text-anchor="middle" class="t-xs t-b" style="fill:var(--c-electric)">/v1/* → Shape API</text>
+              <path class="edge-c c-server" d="M632 290 H696" marker-end="url(#ah-server)"/>
+              <text x="636" y="282" class="t-xs t-muted">SQL</text>
+              <path class="edge-c c-pg" d="M783 222 V180" marker-end="url(#ah-pg)"/>
+              <text x="790" y="206" class="t-xs t-muted">WAL を購読</text>
+
+              <text x="450" y="364" class="t-xs t-muted">pnpm dev で 2 つを並列起動</text>
+              <text x="690" y="364" class="t-xs t-muted">どちらも Docker 内で起動</text>
+            </svg>
+          </div>
+          <div class="legend">
+            <span class="c-proxy"><i class="line"></i>HTTPS（Caddy 経由）</span>
+            <span class="c-server"><i class="line"></i>書き込み経路</span>
+            <span class="c-electric"><i class="line"></i>読み取り同期経路</span>
+          </div>
+          <figcaption>図 1-1. プロセス構成と通信経路 ― ブラウザから見える入口は Caddy（443）だけ</figcaption>
+        </figure>
+
+        <h3 id="components">構成要素</h3>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>構成要素</th><th>実体</th><th>起動</th><th>役割</th></tr></thead>
+            <tbody>
+              <tr><td><span class="tag c-client">ブラウザ</span></td><td>React + TanStack DB</td><td>URL を開く</td><td>画面の描画、データの保持（コレクション）、状態の計算、楽観的更新</td></tr>
+              <tr><td><span class="tag c-proxy">Caddy</span></td><td>ローカルにインストール（mise）</td><td><code>caddy run</code></td><td>HTTPS 終端。<code>/v1/*</code> を Electric、それ以外を Vite に振り分け</td></tr>
+              <tr><td><span class="tag c-client">Vite</span></td><td><code>vite</code> + <code>tanstackStart</code> プラグイン</td><td><code>pnpm dev</code>（dev:client）</td><td>画面・JS の配信、HMR、<code>/trpc</code> を tRPC サーバーへプロキシ</td></tr>
+              <tr><td><span class="tag c-server">Hono + tRPC</span></td><td><code>server/index.ts</code></td><td><code>pnpm dev</code>（dev:server）</td><td>書き込み（採番・状態遷移の検証を含む INSERT）と仮の番号の取得。txid を返す</td></tr>
+              <tr><td><span class="tag c-electric">ElectricSQL</span></td><td><code>electricsql/electric</code> コンテナ</td><td><code>docker compose up</code></td><td>PostgreSQL の変更を WAL から読み取り、Shape としてブラウザに配信</td></tr>
+              <tr><td><span class="tag c-pg">PostgreSQL</span></td><td><code>postgres:17-alpine</code> コンテナ</td><td><code>docker compose up</code></td><td>唯一の正のデータ。論理レプリケーションのため <code>wal_level=logical</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="routing">リクエストの振り分け</h3>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>ブラウザからのパス</th><th>Caddy の転送先</th><th>その先</th><th>内容</th></tr></thead>
+            <tbody>
+              <tr><td><code>/v1/shape?table=…</code></td><td>Electric <code>localhost:3000</code></td><td>―</td><td>読み取り同期（初回スナップショット＋差分）</td></tr>
+              <tr><td><code>/trpc/…</code></td><td>Vite <code>{IP}:5173</code></td><td>Vite のプロキシ → <code>localhost:3001</code></td><td>tRPC の query / mutation</td></tr>
+              <tr><td><code>/</code>, <code>/staff/…</code> など</td><td>Vite <code>{IP}:5173</code></td><td>―</td><td>HTML（SSR は「読み込み中」のみ）・JS・CSS</td></tr>
+              <tr><td>WebSocket</td><td>Vite</td><td>―</td><td>HMR（開発時のホットリロード）</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="cqrs"><span class="num">02</span>読み取りと書き込みの分離</h2>
+        <p>
+          データは <strong>「画面 → tRPC → PostgreSQL → Electric → 画面」</strong> という一方向のループを回ります。
+          画面がデータを取得するために API を呼ぶことはなく、書き込みの結果も Electric 経由で戻ってきます。
+        </p>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 900 300" role="img" aria-labelledby="cq-t">
+              <title id="cq-t">書き込み経路と読み取り経路のループ</title>
+              <g class="c-client"><rect class="node" x="16" y="40" width="120" height="220" rx="14"/>
+                <text x="76" y="140" text-anchor="middle" class="t-b">画面</text>
+                <text x="76" y="160" text-anchor="middle" class="t-xs t-muted">React</text></g>
+              <g class="c-pg"><rect class="node" x="764" y="40" width="120" height="220" rx="14"/>
+                <text x="824" y="140" text-anchor="middle" class="t-b">PostgreSQL</text>
+                <text x="824" y="160" text-anchor="middle" class="t-xs t-muted">正のデータ</text></g>
+
+              <!-- write lane -->
+              <text x="160" y="34" class="t-xs t-b" style="fill:var(--c-server)">書き込み（Command）</text>
+              <g class="c-server">
+                <rect class="node" x="160" y="48" width="110" height="52" rx="9"/><text x="215" y="70" text-anchor="middle" class="t-xs t-b">ユースケース</text><text x="215" y="86" text-anchor="middle" class="t-xs t-muted">createEntry 等</text>
+                <rect class="node" x="292" y="48" width="110" height="52" rx="9"/><text x="347" y="70" text-anchor="middle" class="t-xs t-b">リポジトリ</text><text x="347" y="86" text-anchor="middle" class="t-xs t-muted">insert()</text>
+                <rect class="node" x="424" y="48" width="130" height="52" rx="9" style="stroke:var(--c-db)"/><text x="489" y="70" text-anchor="middle" class="t-xs t-b">コレクション</text><text x="489" y="86" text-anchor="middle" class="t-xs t-muted">insert → onInsert</text>
+                <rect class="node" x="576" y="48" width="160" height="52" rx="9"/><text x="656" y="70" text-anchor="middle" class="t-xs t-b">tRPC（Hono）</text><text x="656" y="86" text-anchor="middle" class="t-xs t-muted mono">entry.insert 等</text>
+              </g>
+              <path class="edge-c c-server" d="M136 74 H156" marker-end="url(#ah-server)"/>
+              <path class="edge-c c-server" d="M270 74 H288" marker-end="url(#ah-server)"/>
+              <path class="edge-c c-server" d="M402 74 H420" marker-end="url(#ah-server)"/>
+              <path class="edge-c c-server" d="M554 74 H572" marker-end="url(#ah-server)"/>
+              <path class="edge-c c-server" d="M736 74 H760" marker-end="url(#ah-server)"/>
+
+              <!-- optimistic shortcut -->
+              <path class="edge-c c-db dash" d="M489 100 V150 H140" marker-end="url(#ah-db)"/>
+              <rect class="pill-bg" x="232" y="138" width="200" height="24" rx="12"/>
+              <text x="332" y="154" text-anchor="middle" class="t-xs t-b" style="fill:var(--c-db)">楽観的更新（すぐに画面へ）</text>
+
+              <!-- read lane -->
+              <text x="160" y="290" class="t-xs t-b" style="fill:var(--c-electric)">読み取り（Query）</text>
+              <g class="c-electric">
+                <rect class="node" x="576" y="200" width="160" height="52" rx="9"/><text x="656" y="222" text-anchor="middle" class="t-xs t-b">ElectricSQL</text><text x="656" y="238" text-anchor="middle" class="t-xs t-muted">WAL → Shape</text>
+                <rect class="node" x="424" y="200" width="130" height="52" rx="9" style="stroke:var(--c-db)"/><text x="489" y="222" text-anchor="middle" class="t-xs t-b">コレクション</text><text x="489" y="238" text-anchor="middle" class="t-xs t-muted">同期データを保持</text>
+                <rect class="node" x="292" y="200" width="110" height="52" rx="9"/><text x="347" y="222" text-anchor="middle" class="t-xs t-b">ライブクエリ</text><text x="347" y="238" text-anchor="middle" class="t-xs t-muted">JOIN・状態計算</text>
+                <rect class="node" x="160" y="200" width="110" height="52" rx="9"/><text x="215" y="222" text-anchor="middle" class="t-xs t-b">フック</text><text x="215" y="238" text-anchor="middle" class="t-xs t-muted">useQueueStats 等</text>
+              </g>
+              <path class="edge-c c-electric" d="M764 226 H740" marker-end="url(#ah-electric)"/>
+              <path class="edge-c c-electric" d="M576 226 H558" marker-end="url(#ah-electric)"/>
+              <path class="edge-c c-electric" d="M424 226 H406" marker-end="url(#ah-electric)"/>
+              <path class="edge-c c-electric" d="M292 226 H274" marker-end="url(#ah-electric)"/>
+              <path class="edge-c c-electric" d="M160 226 H140" marker-end="url(#ah-electric)"/>
+              <path class="edge dash" d="M489 200 V168" />
+              <text x="498" y="190" class="t-xs t-muted">txid が届いたら楽観的な値を確定値に置換</text>
+            </svg>
+          </div>
+          <figcaption>図 2-1. 書き込み（上段）と読み取り（下段）― 両方の経路がブラウザ内のコレクションで合流する</figcaption>
+        </figure>
+        <div class="compare">
+          <div class="card card--accent c-server">
+            <h4>書き込み経路（Command）</h4>
+            <ul>
+              <li>コレクションの <code>insert()</code> から始まる</li>
+              <li><code>onInsert</code> ハンドラが tRPC のミューテーションを呼ぶ</li>
+              <li>サーバーは INSERT とともにトランザクション ID（txid）を返す</li>
+              <li>失敗したら楽観的な変更はロールバックされる</li>
+            </ul>
+          </div>
+          <div class="card card--accent c-electric">
+            <h4>読み取り経路（Query）</h4>
+            <ul>
+              <li>ブラウザは Shape を購読し続けるだけ（API を呼ばない）</li>
+              <li>自分の書き込みも他端末の書き込みも同じ経路で届く</li>
+              <li>届いた変更でライブクエリが差分だけ再計算される</li>
+              <li>画面は React のフックとして結果を受け取る</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="seq-create"><span class="num">03</span>シーケンス：整理券の発行</h2>
+        <p>受付端末で「整理券を発行」を押してから、モーダルが表示され、他の端末にも反映されるまでの流れです。</p>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 900 620" role="img" aria-labelledby="sq1-t" style="min-width:760px">
+              <title id="sq1-t">整理券発行のシーケンス図</title>
+              <!-- heads -->
+              <g class="c-client"><rect class="node" x="14" y="12" width="96" height="40" rx="8"/><text x="62" y="37" text-anchor="middle" class="t-xs t-b">受付画面</text></g>
+              <g class="c-domain"><rect class="node" x="134" y="12" width="96" height="40" rx="8"/><text x="182" y="37" text-anchor="middle" class="t-xs t-b">ユースケース</text></g>
+              <g class="c-db"><rect class="node" x="254" y="12" width="112" height="40" rx="8"/><text x="310" y="37" text-anchor="middle" class="t-xs t-b">TanStack DB</text></g>
+              <g class="c-server"><rect class="node" x="392" y="12" width="116" height="40" rx="8"/><text x="450" y="37" text-anchor="middle" class="t-xs t-b">tRPC サーバー</text></g>
+              <g class="c-pg"><rect class="node" x="534" y="12" width="112" height="40" rx="8"/><text x="590" y="37" text-anchor="middle" class="t-xs t-b">PostgreSQL</text></g>
+              <g class="c-electric"><rect class="node" x="672" y="12" width="96" height="40" rx="8"/><text x="720" y="37" text-anchor="middle" class="t-xs t-b">Electric</text></g>
+              <g class="c-client"><rect class="node" x="792" y="12" width="96" height="40" rx="8"/><text x="840" y="37" text-anchor="middle" class="t-xs t-b">他の端末</text></g>
+              <!-- lifelines -->
+              <path class="lifeline" d="M62 52 V610 M182 52 V610 M310 52 V610 M450 52 V610 M590 52 V610 M720 52 V610 M840 52 V610"/>
+
+              <!-- phase 1 -->
+              <rect x="6" y="64" width="888" height="20" rx="4" fill="var(--surface-2)"/>
+              <text x="14" y="78" class="t-xs t-b t-muted">① 仮の番号の取得</text>
+              <path class="edge-c c-server" d="M62 104 H446" marker-end="url(#ah-server)"/>
+              <text x="254" y="98" text-anchor="middle" class="t-xs">queue.getNextTicketNumber（GET・仮の番号）</text>
+              <path class="edge-c c-pg" d="M450 126 H586" marker-end="url(#ah-pg)"/>
+              <text x="518" y="120" text-anchor="middle" class="t-xs mono">SELECT MAX(number)</text>
+              <path class="edge dash" d="M590 146 H454" marker-end="url(#ah)"/>
+              <path class="edge dash" d="M450 166 H66" marker-end="url(#ah)"/>
+              <text x="254" y="160" text-anchor="middle" class="t-xs t-muted">{ number: 35 }</text>
+
+              <!-- phase 2 -->
+              <rect x="6" y="180" width="888" height="20" rx="4" fill="var(--surface-2)"/>
+              <text x="14" y="194" class="t-xs t-b t-muted">② entry の書き込み</text>
+              <path class="edge-c c-domain" d="M62 222 H178" marker-end="url(#ah-domain)"/>
+              <text x="120" y="216" text-anchor="middle" class="t-xs">createEntry()</text>
+              <path class="edge-c c-db" d="M182 246 H306" marker-end="url(#ah-db)"/>
+              <text x="244" y="240" text-anchor="middle" class="t-xs mono">insert(entry)</text>
+              <rect class="act c-db" x="304" y="250" width="12" height="160" rx="2"/>
+              <rect x="326" y="252" width="112" height="22" rx="5" fill="color-mix(in srgb, var(--c-db) 12%, var(--surface))" stroke="var(--c-db)"/>
+              <text x="382" y="267" text-anchor="middle" class="t-xs" style="fill:var(--c-db)">画面に即時反映</text>
+              <path class="edge-c c-server" d="M316 292 H446" marker-end="url(#ah-server)"/>
+              <text x="381" y="286" text-anchor="middle" class="t-xs">onInsert → entry.insert</text>
+              <path class="edge-c c-pg" d="M450 314 H586" marker-end="url(#ah-pg)"/>
+              <text x="518" y="308" text-anchor="middle" class="t-xs mono">ロック→採番→INSERT</text>
+              <path class="edge dash" d="M590 334 H454" marker-end="url(#ah)"/>
+              <path class="edge dash" d="M450 352 H320" marker-end="url(#ah)"/>
+              <text x="385" y="346" text-anchor="middle" class="t-xs t-muted">{ txid, number }</text>
+              <path class="edge-c c-pg" d="M590 340 C640 340, 660 360, 716 360" marker-end="url(#ah-pg)"/>
+              <text x="648" y="334" class="t-xs t-muted">WAL</text>
+              <path class="edge-c c-electric dash" d="M720 384 H320" marker-end="url(#ah-electric)"/>
+              <text x="520" y="378" text-anchor="middle" class="t-xs" style="fill:var(--c-electric)">Shape の変更（txid を含む）</text>
+              <path class="edge-c c-electric dash" d="M720 384 H836" marker-end="url(#ah-electric)"/>
+              <text x="778" y="378" text-anchor="middle" class="t-xs" style="fill:var(--c-electric)">配信</text>
+              <rect x="326" y="396" width="150" height="22" rx="5" class="box-2"/>
+              <text x="401" y="411" text-anchor="middle" class="t-xs mono">awaitTxId 解決 → 確定</text>
+              <path class="edge dash" d="M304 430 H186" marker-end="url(#ah)"/>
+              <text x="245" y="424" text-anchor="middle" class="t-xs t-muted mono">when('settled')</text>
+
+              <!-- phase 3 -->
+              <rect x="6" y="444" width="888" height="20" rx="4" fill="var(--surface-2)"/>
+              <text x="14" y="458" class="t-xs t-b t-muted">③ created イベントの書き込み</text>
+              <path class="edge-c c-db" d="M182 486 H306" marker-end="url(#ah-db)"/>
+              <text x="244" y="480" text-anchor="middle" class="t-xs mono">insert(event)</text>
+              <rect x="320" y="474" width="530" height="26" rx="6" fill="none" stroke="var(--line-strong)" stroke-dasharray="4 3"/>
+              <text x="585" y="491" text-anchor="middle" class="t-xs t-muted">② と同じ流れ（entry.insertEvent → 遷移を検証 → INSERT → txid → 確定）</text>
+              <path class="edge dash" d="M304 520 H186" marker-end="url(#ah)"/>
+              <text x="245" y="514" text-anchor="middle" class="t-xs t-muted mono">when('settled')</text>
+
+              <!-- phase 4 -->
+              <rect x="6" y="534" width="888" height="20" rx="4" fill="var(--surface-2)"/>
+              <text x="14" y="548" class="t-xs t-b t-muted">④ 結果の表示</text>
+              <path class="edge dash" d="M182 574 H66" marker-end="url(#ah)"/>
+              <text x="122" y="568" text-anchor="middle" class="t-xs t-muted">{ token, 確定番号 }</text>
+              <path class="edge-c c-client" d="M62 586 h24 v16 h-20" marker-end="url(#ah-client)"/>
+              <text x="94" y="600" class="t-xs">QR を生成してモーダル表示</text>
+            </svg>
+          </div>
+          <figcaption>図 3-1. 整理券発行のシーケンス ― 書き込みのたびに「Electric から戻ってくるまで」待ってから次へ進む</figcaption>
+        </figure>
+        <ol class="steps-legend">
+          <li><span class="n">1</span><span><strong>仮の番号</strong>：画面に即時表示するための番号をサーバーの <code>MAX(number) + 1</code> で取得する。</span></li>
+          <li><span class="n">2</span><span><strong>entry の書き込み</strong>：コレクションに仮の番号で insert した瞬間に画面へ反映される。サーバーは待ち行列の行をロックして<strong>確定番号を採番</strong>し INSERT する。Electric から同じ txid が届いたら確定（同期された確定番号に置き換わる）。</span></li>
+          <li><span class="n">3</span><span><strong>イベントの書き込み</strong>：<code>created</code> イベントを同じ方法で書き込む。サーバーは状態遷移ルールを検証してから INSERT する。</span></li>
+          <li><span class="n">4</span><span><strong>結果の表示</strong>：確定番号とトークンで QR コード付きのモーダルを表示する。他の端末にはステップ 2・3 の Electric の配信で反映済み。</span></li>
+        </ol>
+
+        <!-- ===================================================== -->
+        <h2 id="seq-call"><span class="num">04</span>シーケンス：呼び出しが全端末に届くまで</h2>
+        <p>呼び出し端末で「呼び出す」を押すと、1 件の <code>called</code> イベントが追記され、それが全端末に配られます。各端末はそれぞれ自分で状態を計算し直します。</p>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 900 290" role="img" aria-labelledby="sq2-t">
+              <title id="sq2-t">呼び出しイベントが全端末に配信される流れ</title>
+              <g class="c-client"><rect class="node" x="16" y="110" width="150" height="70" rx="12"/>
+                <text x="91" y="138" text-anchor="middle" class="t-b">呼び出し端末</text>
+                <text x="91" y="158" text-anchor="middle" class="t-xs t-muted">「呼び出す」</text></g>
+              <g class="c-server"><rect class="node" x="214" y="118" width="120" height="54" rx="10"/>
+                <text x="274" y="142" text-anchor="middle" class="t-sm t-b">tRPC</text>
+                <text x="274" y="160" text-anchor="middle" class="t-xs t-muted mono">insertEvent</text></g>
+              <g class="c-pg"><rect class="node" x="382" y="118" width="120" height="54" rx="10"/>
+                <text x="442" y="142" text-anchor="middle" class="t-sm t-b">PostgreSQL</text>
+                <text x="442" y="160" text-anchor="middle" class="t-xs t-muted">called を追記</text></g>
+              <g class="c-electric"><rect class="node" x="550" y="118" width="120" height="54" rx="10"/>
+                <text x="610" y="142" text-anchor="middle" class="t-sm t-b">Electric</text>
+                <text x="610" y="160" text-anchor="middle" class="t-xs t-muted">Shape に追加</text></g>
+
+              <path class="edge-c c-server" d="M166 145 H210" marker-end="url(#ah-server)"/>
+              <path class="edge-c c-server" d="M334 145 H378" marker-end="url(#ah-server)"/>
+              <path class="edge-c c-pg" d="M502 145 H546" marker-end="url(#ah-pg)"/>
+
+              <g class="c-client">
+                <rect class="node" x="730" y="14" width="156" height="56" rx="10"/><text x="808" y="38" text-anchor="middle" class="t-sm t-b">表示端末</text><text x="808" y="56" text-anchor="middle" class="t-xs t-muted">呼び出し中に番号を追加</text>
+                <rect class="node" x="730" y="84" width="156" height="56" rx="10"/><text x="808" y="108" text-anchor="middle" class="t-sm t-b">お客様スマホ</text><text x="808" y="126" text-anchor="middle" class="t-xs t-muted">「呼び出し中」に変化</text>
+                <rect class="node" x="730" y="154" width="156" height="56" rx="10"/><text x="808" y="178" text-anchor="middle" class="t-sm t-b">受付端末</text><text x="808" y="196" text-anchor="middle" class="t-xs t-muted">待機中 −1 / 呼出中 +1</text>
+                <rect class="node" x="730" y="224" width="156" height="56" rx="10"/><text x="808" y="248" text-anchor="middle" class="t-sm t-b">呼び出し端末</text><text x="808" y="266" text-anchor="middle" class="t-xs t-muted">楽観的な値を確定</text>
+              </g>
+              <path class="edge-c c-electric dash" d="M670 145 C700 145, 700 42, 726 42" marker-end="url(#ah-electric)"/>
+              <path class="edge-c c-electric dash" d="M670 145 C700 145, 700 112, 726 112" marker-end="url(#ah-electric)"/>
+              <path class="edge-c c-electric dash" d="M670 145 C700 145, 700 182, 726 182" marker-end="url(#ah-electric)"/>
+              <path class="edge-c c-electric dash" d="M670 145 C700 145, 700 252, 726 252" marker-end="url(#ah-electric)"/>
+
+              <path class="edge-c c-db dash" d="M91 180 V250 H40" />
+              <rect x="16" y="214" width="170" height="54" rx="9" fill="color-mix(in srgb, var(--c-db) 10%, var(--surface))" stroke="var(--c-db)" stroke-dasharray="4 3"/>
+              <text x="101" y="236" text-anchor="middle" class="t-xs t-b" style="fill:var(--c-db)">楽観的更新</text>
+              <text x="101" y="254" text-anchor="middle" class="t-xs t-muted">押した端末はその場で反映</text>
+              <text x="442" y="214" text-anchor="middle" class="t-xs t-muted">各端末は届いたイベントで状態を計算し直す（計算ロジックは全端末共通）</text>
+            </svg>
+          </div>
+          <figcaption>図 4-1. 1 件のイベントが全端末へ ― サーバーは「配る」だけで、状態の計算は各端末が行う</figcaption>
+        </figure>
+
+        <!-- ===================================================== -->
+        <h2 id="layers"><span class="num">05</span>フロントエンドのレイヤー構成</h2>
+        <p>
+          <code>app/</code> 配下はクリーンアーキテクチャを参考にした層に分かれています。依存は外側から内側へ向かい、
+          中心のドメイン層はどのフレームワークにも依存しません。
+        </p>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 880 360" role="img" aria-labelledby="ly-t">
+              <title id="ly-t">レイヤーの同心円図</title>
+              <circle cx="190" cy="180" r="166" fill="color-mix(in srgb, var(--c-client) 8%, var(--surface))" stroke="var(--c-client)" stroke-width="1.5"/>
+              <circle cx="190" cy="180" r="112" fill="color-mix(in srgb, var(--c-server) 10%, var(--surface))" stroke="var(--c-server)" stroke-width="1.5"/>
+              <circle cx="190" cy="180" r="58" fill="color-mix(in srgb, var(--c-domain) 16%, var(--surface))" stroke="var(--c-domain)" stroke-width="1.5"/>
+              <text x="190" y="176" text-anchor="middle" class="t-b">Domain</text>
+              <text x="190" y="194" text-anchor="middle" class="t-xs t-muted">ビジネスルール</text>
+              <text x="190" y="94" text-anchor="middle" class="t-sm t-b" style="fill:var(--c-server)">Usecases</text>
+              <text x="190" y="40" text-anchor="middle" class="t-sm t-b" style="fill:var(--c-client)">UI / Query / Infrastructure</text>
+              <path class="edge-c c-client" d="M60 180 H126" marker-end="url(#ah-client)"/>
+              <path class="edge-c c-client" d="M320 180 H254" marker-end="url(#ah-client)"/>
+              <text x="190" y="324" text-anchor="middle" class="t-xs t-muted">依存は外 → 内</text>
+
+              <!-- right side table -->
+              <g transform="translate(400 24)">
+                <g class="c-domain"><rect class="node" x="0" y="0" width="464" height="68" rx="10"/>
+                  <text x="16" y="24" class="t-sm t-b">Domain</text><text x="110" y="24" class="t-xs mono t-muted">app/domain</text>
+                  <text x="16" y="46" class="t-xs">型（Entry, EntryEvent）、状態の計算、状態遷移ルール、</text>
+                  <text x="16" y="62" class="t-xs">リポジトリのインターフェース</text></g>
+                <g class="c-server"><rect class="node" x="0" y="80" width="464" height="68" rx="10"/>
+                  <text x="16" y="104" class="t-sm t-b">Usecases</text><text x="110" y="104" class="t-xs mono t-muted">app/usecases</text>
+                  <text x="16" y="126" class="t-xs">createEntry / callEntry / markEntryDone / skipEntry /</text>
+                  <text x="16" y="142" class="t-xs">cancelEntry / getNextTicketNumber</text></g>
+                <g class="c-client"><rect class="node" x="0" y="160" width="464" height="148" rx="10"/>
+                  <text x="16" y="184" class="t-sm t-b">外側の層</text>
+                  <text x="16" y="208" class="t-xs"><tspan class="t-b">routes</tspan>　app/routes ― URL と画面の対応（ClientOnly）</text>
+                  <text x="16" y="230" class="t-xs"><tspan class="t-b">components</tspan>　app/components ― 各端末の画面</text>
+                  <text x="16" y="252" class="t-xs"><tspan class="t-b">query</tspan>　app/query ― ライブクエリと派生ビューのフック</text>
+                  <text x="16" y="274" class="t-xs"><tspan class="t-b">infrastructure</tspan>　app/infrastructure ― コレクション、リポジトリ実装、</text>
+                  <text x="16" y="292" class="t-xs">　　Zod スキーマ、マッパー、環境変数（＋ app/client の tRPC クライアント）</text></g>
+              </g>
+            </svg>
+          </div>
+          <figcaption>図 5-1. レイヤー構成 ― 詳しいディレクトリと依存関係は「構成・構造の解説」へ</figcaption>
+        </figure>
+
+        <!-- ===================================================== -->
+        <h2 id="runtime"><span class="num">06</span>起動とプロセス</h2>
+        <div class="flow">
+          <div class="c-proxy"><b>caddy run</b>HTTPS の入口を開く（Caddyfile は <code>pnpm generate:caddy</code> で生成）</div>
+          <div class="c-pg"><b>docker compose up -d</b>PostgreSQL と Electric を起動（Electric は DB の healthcheck 後）</div>
+          <div class="c-client"><b>pnpm dev</b><code>pnpm run --parallel "/^dev:/"</code> で dev:client と dev:server を同時起動</div>
+        </div>
+        <div class="callout callout--note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/></svg>
+          <div>
+            <div class="callout__title">tRPC サーバーが起動していないと…</div>
+            <p>
+              Vite のログに <code>http proxy error: /trpc/… ECONNREFUSED</code> が出て、整理券の発行などの書き込みが失敗します。
+              画面の表示（Electric による読み取り）は動き続けるため、気づきにくい点に注意してください。
+            </p>
+          </div>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="decisions"><span class="num">07</span>アーキテクチャ上の判断</h2>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>判断</th><th>理由</th><th>トレードオフ</th></tr></thead>
+            <tbody>
+              <tr><td>読み取りは Electric、書き込みは自前 API</td><td>Electric は読み取り専用の同期エンジン。書き込みのルール（検証・採番）はサーバーで持てる</td><td>経路が 2 つになり、書き込み後に「同期で戻るまで待つ」仕組み（txid）が必要</td></tr>
+              <tr><td>書き込み API を独立した Hono + tRPC サーバーにした</td><td>TanStack Start のサーバー関数から移行。API を画面フレームワークから切り離し、型安全なまま単体で動かせる</td><td>起動するプロセスが増え、ポートとプロキシの設定が必要</td></tr>
+              <tr><td>状態は各端末で計算する</td><td>イベントの追記だけで済み、同時操作に強い。サーバーに集計ロジックが不要</td><td>全端末が全データを同期する必要がある</td></tr>
+              <tr><td>画面はブラウザでのみ描画（ClientOnly）</td><td>コレクションと同期はブラウザでしか動かない</td><td>SSR による初期表示の高速化は得られない</td></tr>
+              <tr><td>開発環境でも HTTPS（Caddy）</td><td><code>crypto.randomUUID()</code> に安全なコンテキストが必要。LAN 内のスマホからも使う</td><td>自己署名証明書の警告を初回に許可する必要がある</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <nav class="pager" aria-label="前後の資料">
+          <a href="spec.html"><small>← 前へ</small>アプリの仕様書</a>
+          <a class="next" href="structure.html"><small>次へ →</small>構成・構造の解説</a>
+        </nav>
+      </article>
+    </main>
+  </div>
+  <footer class="site-footer">店舗向け順番待ちアプリ 解説資料 ― アーキテクチャ</footer>
+</body>
+</html>

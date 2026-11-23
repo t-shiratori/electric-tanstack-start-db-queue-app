@@ -1,0 +1,894 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>アプリ仕様書</title>
+  <meta name="description" content="店舗向け順番待ちアプリの仕様書。画面・機能・状態・集計・データ・API・非機能・環境の仕様を定義します。">
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="assets/docs.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="brand" href="index.html"><span class="brand__mark">Q</span>順番待ちアプリ 解説資料</a>
+      <nav class="site-nav" data-site-nav aria-label="資料一覧"></nav>
+      <button class="icon-btn nav-toggle" data-nav-toggle aria-label="目次を開く"></button>
+      <button class="icon-btn" data-theme-toggle aria-label="テーマ切り替え"></button>
+    </div>
+  </header>
+  <div class="scrim"></div>
+
+  <div class="layout">
+    <aside class="sidenav" data-sidenav data-title="仕様書の目次"></aside>
+    <main class="main">
+      <article class="doc">
+        <div class="eyebrow">Specification</div>
+        <h1>アプリの仕様書</h1>
+        <p class="lead">
+          店舗向け順番待ちアプリの画面・機能・状態・データ・API・非機能要件を定義します。
+          記載内容は現在の実装（<code>main</code> ブランチ）に基づきます。設計の意図は<a href="design.html">設計書</a>を参照してください。
+        </p>
+        <div class="doc-meta">
+          <span class="chip">画面 5</span>
+          <span class="chip">機能 7</span>
+          <span class="chip">状態 5</span>
+          <span class="chip">tRPC プロシージャ 3</span>
+        </div>
+
+        <nav class="toc" aria-labelledby="toc-title">
+          <div class="toc__title" id="toc-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+            目次
+          </div>
+          <ol>
+            <li><a href="#overview"><span class="num">1.</span>概要</a>
+              <ol>
+                <li><a href="#overview-purpose"><span class="num">1.1</span>目的</a></li>
+                <li><a href="#overview-scope"><span class="num">1.2</span>対象範囲</a></li>
+                <li><a href="#overview-scene"><span class="num">1.3</span>想定する利用シーン</a></li>
+              </ol>
+            </li>
+            <li><a href="#system"><span class="num">2.</span>システム構成</a>
+              <ol>
+                <li><a href="#system-devices"><span class="num">2.1</span>端末構成</a></li>
+                <li><a href="#system-roles"><span class="num">2.2</span>利用者と操作権限</a></li>
+              </ol>
+            </li>
+            <li><a href="#terms"><span class="num">3.</span>用語定義</a></li>
+            <li><a href="#screens"><span class="num">4.</span>画面一覧と画面遷移</a>
+              <ol>
+                <li><a href="#screens-list"><span class="num">4.1</span>画面一覧</a></li>
+                <li><a href="#screens-flow"><span class="num">4.2</span>画面遷移</a></li>
+              </ol>
+            </li>
+            <li><a href="#ui"><span class="num">5.</span>画面仕様</a>
+              <ol>
+                <li><a href="#ui-home"><span class="num">5.1</span>ホーム</a></li>
+                <li><a href="#ui-reception"><span class="num">5.2</span>受付端末</a></li>
+                <li><a href="#ui-call"><span class="num">5.3</span>呼び出し端末</a></li>
+                <li><a href="#ui-display"><span class="num">5.4</span>表示端末</a></li>
+                <li><a href="#ui-entry"><span class="num">5.5</span>スマホ画面</a></li>
+              </ol>
+            </li>
+            <li><a href="#functions"><span class="num">6.</span>機能仕様</a>
+              <ol>
+                <li><a href="#f01"><span class="num">F-01</span>整理券の発行</a></li>
+                <li><a href="#f02"><span class="num">F-02</span>呼び出し</a></li>
+                <li><a href="#f03"><span class="num">F-03</span>完了</a></li>
+                <li><a href="#f04"><span class="num">F-04</span>スキップ</a></li>
+                <li><a href="#f05"><span class="num">F-05</span>キャンセル</a></li>
+                <li><a href="#f06"><span class="num">F-06</span>状況の表示</a></li>
+                <li><a href="#f07"><span class="num">F-07</span>リアルタイム同期</a></li>
+              </ol>
+            </li>
+            <li><a href="#states"><span class="num">7.</span>状態仕様</a>
+              <ol>
+                <li><a href="#states-list"><span class="num">7.1</span>状態一覧と遷移</a></li>
+                <li><a href="#states-view"><span class="num">7.2</span>状態ごとの画面表示</a></li>
+              </ol>
+            </li>
+            <li><a href="#stats"><span class="num">8.</span>集計仕様</a></li>
+            <li><a href="#data"><span class="num">9.</span>データ仕様</a>
+              <ol>
+                <li><a href="#data-tables"><span class="num">9.1</span>テーブル定義</a></li>
+                <li><a href="#data-validation"><span class="num">9.2</span>入力値の検証</a></li>
+              </ol>
+            </li>
+            <li><a href="#api"><span class="num">10.</span>API 仕様</a>
+              <ol>
+                <li><a href="#api-trpc"><span class="num">10.1</span>tRPC プロシージャ</a></li>
+                <li><a href="#api-electric"><span class="num">10.2</span>Electric Shape API</a></li>
+                <li><a href="#api-other"><span class="num">10.3</span>その他のエンドポイント</a></li>
+              </ol>
+            </li>
+            <li><a href="#nfr"><span class="num">11.</span>非機能仕様</a></li>
+            <li><a href="#env"><span class="num">12.</span>環境・運用仕様</a>
+              <ol>
+                <li><a href="#env-vars"><span class="num">12.1</span>環境変数</a></li>
+                <li><a href="#env-ports"><span class="num">12.2</span>ポート</a></li>
+                <li><a href="#env-commands"><span class="num">12.3</span>起動手順</a></li>
+              </ol>
+            </li>
+            <li><a href="#limits"><span class="num">13.</span>制約事項・今後の拡張</a></li>
+          </ol>
+        </nav>
+
+        <!-- ===================================================== 1 -->
+        <h2 id="overview"><span class="num">1.</span>概要</h2>
+        <h3 id="overview-purpose"><span class="num">1.1</span>目的</h3>
+        <p>飲食店・クリニック・窓口などで使う整理券式の順番待ちを、複数の端末でリアルタイムに共有できる Web アプリとして提供します。</p>
+        <ul>
+          <li>受付・呼び出し・掲示・お客様の確認を、<strong>同じ Web アプリ</strong>の画面として提供する</li>
+          <li>ある端末での操作が、<strong>他のすべての端末に即座に反映</strong>される</li>
+          <li>状態の変化を<strong>すべて履歴として残し</strong>、現在の状態は履歴から求める</li>
+        </ul>
+
+        <h3 id="overview-scope"><span class="num">1.2</span>対象範囲</h3>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>区分</th><th>内容</th></tr></thead>
+            <tbody>
+              <tr><td>対象</td><td>待ち行列 1 つ（デフォルト店舗）での受付・呼び出し・完了・スキップ・キャンセル、状況の掲示、お客様スマホでの状況確認、QR コードによるスマホ連携</td></tr>
+              <tr><td>対象外</td><td>認証・権限管理、複数の待ち行列、SMS / プッシュ通知、管理画面、統計ダッシュボード、本番環境へのデプロイ</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="overview-scene"><span class="num">1.3</span>想定する利用シーン</h3>
+        <div class="flow">
+          <div><b>来店・受付</b>スタッフが受付端末で人数を選び、整理券を発行する</div>
+          <div><b>QR を渡す</b>お客様が QR を読み取り、スマホで順番を確認する</div>
+          <div><b>呼び出し</b>スタッフが呼び出し端末で次の番号を呼ぶ。掲示とスマホに即反映</div>
+          <div><b>対応</b>来たら「完了」、来なければ「スキップ」</div>
+          <div><b>取り消し</b>お客様はスマホから自分でキャンセルできる</div>
+        </div>
+
+        <!-- ===================================================== 2 -->
+        <h2 id="system"><span class="num">2.</span>システム構成</h2>
+        <h3 id="system-devices"><span class="num">2.1</span>端末構成</h3>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 880 220" role="img" aria-labelledby="dev-t">
+              <title id="dev-t">端末構成</title>
+              <g class="c-client">
+                <rect class="node" x="16" y="20" width="200" height="72" rx="12"/>
+                <text x="116" y="50" text-anchor="middle" class="t-b">受付端末</text>
+                <text x="116" y="72" text-anchor="middle" class="t-xs t-muted">タブレット / PC ・ 書き込みあり</text>
+                <rect class="node" x="16" y="128" width="200" height="72" rx="12"/>
+                <text x="116" y="158" text-anchor="middle" class="t-b">呼び出し端末</text>
+                <text x="116" y="180" text-anchor="middle" class="t-xs t-muted">PC ・ 書き込みあり</text>
+                <rect class="node" x="664" y="20" width="200" height="72" rx="12"/>
+                <text x="764" y="50" text-anchor="middle" class="t-b">表示端末</text>
+                <text x="764" y="72" text-anchor="middle" class="t-xs t-muted">TV / モニター ・ 参照のみ</text>
+                <rect class="node" x="664" y="128" width="200" height="72" rx="12"/>
+                <text x="764" y="158" text-anchor="middle" class="t-b">お客様スマホ</text>
+                <text x="764" y="180" text-anchor="middle" class="t-xs t-muted">QR から参照 ・ キャンセルのみ</text>
+              </g>
+              <g class="c-accent">
+                <rect class="box" x="320" y="58" width="240" height="104" rx="14"/>
+                <text x="440" y="90" text-anchor="middle" class="t-b">順番待ちアプリ</text>
+                <text x="440" y="112" text-anchor="middle" class="t-xs t-muted">同じ Web アプリ（URL で画面を切替）</text>
+                <text x="440" y="140" text-anchor="middle" class="t-xs t-muted">＋ tRPC サーバー / Electric / PostgreSQL</text>
+              </g>
+              <path class="edge" d="M216 56 C270 56, 270 92, 316 92" marker-end="url(#ah)" marker-start="url(#ah)"/>
+              <path class="edge" d="M216 164 C270 164, 270 128, 316 128" marker-end="url(#ah)" marker-start="url(#ah)"/>
+              <path class="edge" d="M560 92 C610 92, 610 56, 660 56" marker-end="url(#ah)"/>
+              <path class="edge" d="M560 128 C610 128, 610 164, 660 164" marker-end="url(#ah)" marker-start="url(#ah)"/>
+              <text x="440" y="200" text-anchor="middle" class="t-xs t-muted">すべてブラウザで動作し、同一 LAN 内から HTTPS でアクセスする</text>
+            </svg>
+          </div>
+          <figcaption>図 2-1. 端末構成 ― 矢印の向きはデータの流れ（双方向 = 書き込みあり）</figcaption>
+        </figure>
+
+        <h3 id="system-roles"><span class="num">2.2</span>利用者と操作権限</h3>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>利用者</th><th>使う画面</th><th>できる操作</th><th>認証</th></tr></thead>
+            <tbody>
+              <tr><td>スタッフ</td><td>受付端末・呼び出し端末</td><td>整理券の発行、呼び出し、完了、スキップ</td><td>なし</td></tr>
+              <tr><td>（掲示）</td><td>表示端末</td><td>なし（参照のみ）</td><td>なし</td></tr>
+              <tr><td>お客様</td><td>スマホ画面</td><td>自分の受付の参照、キャンセル</td><td>URL のトークンで受付を特定</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout callout--warn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20zM12 10v4M12 17h.01"/></svg>
+          <div><p>権限は「その画面にボタンがあるかどうか」で表現しています。URL を知っていれば誰でもどの画面も開けるため、信頼できる LAN 内での利用を前提とします。</p></div>
+        </div>
+
+        <!-- ===================================================== 3 -->
+        <h2 id="terms"><span class="num">3.</span>用語定義</h2>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>用語</th><th>コード上の名前</th><th>意味</th></tr></thead>
+            <tbody>
+              <tr><td>待ち行列（キュー）</td><td><code>queue</code></td><td>店舗や窓口ごとの順番待ちの列。現在はデフォルト店舗（ID <code>a0eebc99-…-6bb9bd380a11</code>）のみ</td></tr>
+              <tr><td>受付（エントリー）</td><td><code>entry</code> / <code>Entry</code></td><td>1 組のお客様の受付。整理券 1 枚に相当する</td></tr>
+              <tr><td>整理券番号</td><td><code>number</code> / <code>ticketNumber</code></td><td>待ち行列内で 1 から順に振られる番号</td></tr>
+              <tr><td>人数</td><td><code>party_size</code></td><td>受付 1 件あたりの人数（1〜6 名）</td></tr>
+              <tr><td>アクセストークン</td><td><code>public_token</code> / <code>token</code></td><td>スマホ画面で受付を特定するための 8 文字の英数字</td></tr>
+              <tr><td>イベント</td><td><code>entry_event</code> / <code>EntryEvent</code></td><td>受付に起きた出来事（受付・呼び出し・完了・スキップ・キャンセル）の記録</td></tr>
+              <tr><td>状態</td><td><code>EntryState</code></td><td>最新のイベントから求めた受付の現在の状況（waiting / called / done / skipped / cancelled）</td></tr>
+              <tr><td>操作者</td><td><code>actor</code></td><td>イベントを起こした主体（<code>staff</code> / <code>user</code> / <code>system</code>）</td></tr>
+              <tr><td>同期</td><td>Electric Shape</td><td>PostgreSQL の変更が各端末のブラウザへ自動的に届くこと</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ===================================================== 4 -->
+        <h2 id="screens"><span class="num">4.</span>画面一覧と画面遷移</h2>
+        <h3 id="screens-list"><span class="num">4.1</span>画面一覧</h3>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>画面</th><th>URL</th><th>利用者</th><th>主な機能</th></tr></thead>
+            <tbody>
+              <tr><td>S-01</td><td>ホーム</td><td><code>/</code></td><td>全員</td><td>各端末画面へのリンク</td></tr>
+              <tr><td>S-02</td><td>受付端末</td><td><code>/staff/reception</code></td><td>スタッフ</td><td>F-01 整理券の発行、F-06 状況の表示</td></tr>
+              <tr><td>S-03</td><td>呼び出し端末</td><td><code>/staff/call</code></td><td>スタッフ</td><td>F-02 呼び出し、F-03 完了、F-04 スキップ</td></tr>
+              <tr><td>S-04</td><td>表示端末</td><td><code>/display</code></td><td>（掲示）</td><td>F-06 状況の表示</td></tr>
+              <tr><td>S-05</td><td>スマホ画面</td><td><code>/entry/{token}</code></td><td>お客様</td><td>自分の受付の確認、F-05 キャンセル</td></tr>
+              <tr><td>―</td><td>404</td><td>上記以外</td><td>全員</td><td>「ページが見つかりません」とホームへのリンク</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="screens-flow"><span class="num">4.2</span>画面遷移</h3>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 880 250" role="img" aria-labelledby="flow-t">
+              <title id="flow-t">画面遷移図</title>
+              <g class="c-infra"><rect class="node" x="16" y="96" width="150" height="56" rx="12"/>
+                <text x="91" y="120" text-anchor="middle" class="t-b">ホーム</text><text x="91" y="140" text-anchor="middle" class="t-xs t-muted mono">/</text></g>
+              <g class="c-client">
+                <rect class="node" x="300" y="16" width="190" height="56" rx="12"/>
+                <text x="395" y="40" text-anchor="middle" class="t-b">受付端末</text><text x="395" y="60" text-anchor="middle" class="t-xs t-muted mono">/staff/reception</text>
+                <rect class="node" x="300" y="96" width="190" height="56" rx="12"/>
+                <text x="395" y="120" text-anchor="middle" class="t-b">呼び出し端末</text><text x="395" y="140" text-anchor="middle" class="t-xs t-muted mono">/staff/call</text>
+                <rect class="node" x="300" y="176" width="190" height="56" rx="12"/>
+                <text x="395" y="200" text-anchor="middle" class="t-b">表示端末</text><text x="395" y="220" text-anchor="middle" class="t-xs t-muted mono">/display</text>
+              </g>
+              <g class="c-electric"><rect class="node" x="664" y="16" width="200" height="56" rx="12"/>
+                <text x="764" y="40" text-anchor="middle" class="t-b">スマホ画面</text><text x="764" y="60" text-anchor="middle" class="t-xs t-muted mono">/entry/{token}</text></g>
+              <g class="c-muted"><rect class="box-2" x="560" y="110" width="110" height="30" rx="8"/><text x="615" y="130" text-anchor="middle" class="t-xs">発行完了モーダル</text></g>
+
+              <path class="edge" d="M166 110 C230 110, 230 44, 296 44" marker-end="url(#ah)"/>
+              <path class="edge" d="M166 124 H296" marker-end="url(#ah)"/>
+              <path class="edge" d="M166 138 C230 138, 230 204, 296 204" marker-end="url(#ah)"/>
+              <text x="200" y="86" class="t-xs t-muted">カードをクリック</text>
+
+              <path class="edge dash" d="M490 52 C530 60, 560 90, 600 108" marker-end="url(#ah)"/>
+              <text x="512" y="98" class="t-xs t-muted">発行</text>
+              <path class="edge-c c-electric dash" d="M630 110 C640 90, 650 70, 660 56" marker-end="url(#ah-electric)"/>
+              <text x="690" y="104" class="t-xs t-b" style="fill:var(--c-electric)">QR をスマホで読み取り</text>
+              <text x="690" y="120" class="t-xs t-muted">（別の端末で開く）</text>
+
+              <text x="300" y="248" class="t-xs t-muted">各スタッフ画面の右上「← ホーム」でホームに戻る（表示端末・スマホ画面にはリンクなし）</text>
+            </svg>
+          </div>
+          <figcaption>図 4-1. 画面遷移図 ― スマホ画面はホームからは開けず、QR コード経由でのみ到達する</figcaption>
+        </figure>
+
+        <!-- ===================================================== 5 -->
+        <h2 id="ui"><span class="num">5.</span>画面仕様</h2>
+        <p>以下のワイヤーフレームは実際の画面の構成を簡略化したものです。すべての画面はブラウザ側でのみ描画され、初期表示中は「読み込み中...」が表示されます。</p>
+
+        <h3 id="ui-home"><span class="num">5.1</span>ホーム（S-01）</h3>
+        <div class="mock-row">
+          <div class="mock">
+            <div class="mock__bar"><i></i><i></i><i></i><span>queue-app.localhost/</span></div>
+            <div class="mock__body">
+              <div class="big" style="font-size:20px">Queue System</div>
+              <div class="note" style="margin-bottom:10px">スマートな順番待ち管理システム</div>
+              <div class="grid2">
+                <div class="panel"><div class="panel-t">受付端末</div><div class="sub" style="margin:0">整理券の発行</div></div>
+                <div class="panel"><div class="panel-t">呼び出し端末</div><div class="sub" style="margin:0">呼び出しと対応管理</div></div>
+                <div class="panel"><div class="panel-t">表示端末</div><div class="sub" style="margin:0">リアルタイム表示</div></div>
+                <div class="panel" style="opacity:.45"><div class="panel-t">スマホ画面</div><div class="sub" style="margin:0">QR コードでアクセス</div></div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="tbl-wrap" style="margin-top:0">
+              <table>
+                <thead><tr><th>要素</th><th>仕様</th></tr></thead>
+                <tbody>
+                  <tr><td>受付端末カード</td><td><code>/staff/reception</code> へ遷移</td></tr>
+                  <tr><td>呼び出し端末カード</td><td><code>/staff/call</code> へ遷移</td></tr>
+                  <tr><td>表示端末カード</td><td><code>/display</code> へ遷移</td></tr>
+                  <tr><td>スマホ画面カード</td><td>半透明で表示し、リンクなし（QR からのみアクセス）</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <h3 id="ui-reception"><span class="num">5.2</span>受付端末（S-02）</h3>
+        <div class="mock-row">
+          <div class="mock">
+            <div class="mock__bar"><i></i><i></i><i></i><span>/staff/reception</span></div>
+            <div class="mock__body">
+              <h5>受付端末</h5><div class="sub">新規エントリーの作成と整理券の発行</div>
+              <div class="grid2">
+                <div class="panel">
+                  <div class="panel-t">新規エントリー <span class="callouts-num">1</span></div>
+                  <div class="grid6"><div class="cell on">1</div><div class="cell">2</div><div class="cell">3</div><div class="cell">4</div><div class="cell">5</div><div class="cell">6</div></div>
+                  <span class="btn">整理券を発行 <span class="callouts-num">2</span></span>
+                </div>
+                <div class="panel">
+                  <div class="panel-t">待ち行列状況 <span class="callouts-num">3</span></div>
+                  <div class="grid2" style="margin-bottom:6px">
+                    <div class="cell"><b>5</b>待機中</div><div class="cell"><b>1</b>呼出中</div>
+                    <div class="cell"><b>24</b>完了</div><div class="cell"><b>12.3</b>平均(分)</div>
+                  </div>
+                  <div class="panel-t">最新の待機 <span class="callouts-num">4</span></div>
+                  <div class="list-i"><b>30</b><span class="mono">P7RT…</span></div>
+                  <div class="list-i"><b>31</b><span class="mono">Q8VE…</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="mock">
+            <div class="mock__bar"><i></i><i></i><i></i><span>発行完了モーダル</span></div>
+            <div class="mock__body" style="text-align:center">
+              <div class="big">35</div>
+              <div class="note">整理券番号</div>
+              <div class="qr"></div>
+              <div class="note" style="margin-bottom:8px">QRコードを読み取って状況を確認 <span class="callouts-num">5</span></div>
+              <div class="cell" style="margin-bottom:8px"><span class="note">アクセストークン</span><br><span class="mono">XTVLLPU2</span></div>
+              <span class="btn">閉じる <span class="callouts-num">6</span></span>
+            </div>
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>#</th><th>要素</th><th>仕様</th></tr></thead>
+            <tbody>
+              <tr><td><span class="callouts-num">1</span></td><td>人数選択</td><td>1〜6 の 6 つのボタンから 1 つを選ぶ。初期値は 1。選択中のボタンは反転表示</td></tr>
+              <tr><td><span class="callouts-num">2</span></td><td>整理券を発行</td><td>F-01 を実行。処理中はボタンを無効化し、ラベルを「作成中...」にする</td></tr>
+              <tr><td><span class="callouts-num">3</span></td><td>待ち行列状況</td><td>待機中・呼び出し中・完了の件数と平均待ち時間（分、小数 1 桁）を表示（<a href="#stats">8. 集計仕様</a>）</td></tr>
+              <tr><td><span class="callouts-num">4</span></td><td>最新の待機エントリー</td><td>待機中の受付を番号の小さい順に最大 5 件。番号・受付時刻（時:分）・トークンを表示。0 件なら「待機中のエントリーはありません」</td></tr>
+              <tr><td><span class="callouts-num">5</span></td><td>QR コード</td><td><code>https://{VITE_LOCAL_IP_ADDRESS}/entry/{token}</code> を 300px の QR 画像にして表示</td></tr>
+              <tr><td><span class="callouts-num">6</span></td><td>閉じる</td><td>モーダルを閉じ、人数選択を 1 に戻す</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="ui-call"><span class="num">5.3</span>呼び出し端末（S-03）</h3>
+        <div class="mock-row">
+          <div class="mock" style="grid-column: 1 / -1">
+            <div class="mock__bar"><i></i><i></i><i></i><span>/staff/call</span></div>
+            <div class="mock__body">
+              <h5>呼び出し端末</h5><div class="sub">エントリーの呼び出しと対応管理</div>
+              <div class="grid2">
+                <div>
+                  <div class="panel" style="text-align:center">
+                    <div class="panel-t" style="text-align:left">次の呼び出し <span class="callouts-num">1</span></div>
+                    <div class="big">30</div>
+                    <div class="note mono" style="margin-bottom:8px">11月22日 14:54 ・ P7RTQ2TL</div>
+                    <span class="btn">🔔 呼び出す <span class="callouts-num">2</span></span>
+                  </div>
+                  <div class="panel">
+                    <div class="panel-t">待機中 (5) <span class="callouts-num">3</span></div>
+                    <div class="list-i"><b>30</b><span>14:54</span></div>
+                    <div class="list-i"><b>31</b><span>15:01</span></div>
+                  </div>
+                </div>
+                <div class="panel">
+                  <div class="panel-t">呼び出し済み (2) <span class="callouts-num">4</span></div>
+                  <div class="panel" style="background:var(--surface-2)">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:20px">29</b><span class="note">呼び出し時刻 14:50</span></div>
+                    <div class="grid2"><span class="btn">✓ 完了 <span class="callouts-num">5</span></span><span class="btn ghost">» スキップ <span class="callouts-num">6</span></span></div>
+                  </div>
+                  <div class="panel" style="background:var(--surface-2)">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:20px">28</b><span class="note">呼び出し時刻 14:42</span></div>
+                    <div class="grid2"><span class="btn">✓ 完了</span><span class="btn ghost">» スキップ</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>#</th><th>要素</th><th>仕様</th></tr></thead>
+            <tbody>
+              <tr><td><span class="callouts-num">1</span></td><td>次の呼び出し</td><td>待機中で番号が最も小さい受付の番号・受付日時（月日 時:分）・トークン。待機中がなければ「待機中のエントリーはありません」</td></tr>
+              <tr><td><span class="callouts-num">2</span></td><td>呼び出す</td><td>F-02 を実行。対象は「次の呼び出し」に表示中の受付のみ（任意の受付は呼べない）</td></tr>
+              <tr><td><span class="callouts-num">3</span></td><td>待機中リスト</td><td>待機中の全件を番号順に表示（件数を見出しに表示、一定の高さでスクロール）</td></tr>
+              <tr><td><span class="callouts-num">4</span></td><td>呼び出し済みリスト</td><td>呼び出し中の受付を呼び出し時刻の新しい順に表示。番号・呼び出し時刻・トークン</td></tr>
+              <tr><td><span class="callouts-num">5</span></td><td>完了</td><td>F-03 を実行（確認なし）</td></tr>
+              <tr><td><span class="callouts-num">6</span></td><td>スキップ</td><td>確認ダイアログ「このエントリーをスキップしますか？」で OK のとき F-04 を実行</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="ui-display"><span class="num">5.4</span>表示端末（S-04）</h3>
+        <div class="mock-row">
+          <div class="mock">
+            <div class="mock__bar"><i></i><i></i><i></i><span>/display</span></div>
+            <div class="mock__body mock__body--dark">
+              <div class="big" style="font-size:20px">Queue System</div>
+              <div class="note" style="color:#a1a1aa;margin-bottom:10px">2026年11月22日 15:02 <span class="callouts-num">1</span></div>
+              <div class="grid3" style="margin-bottom:8px">
+                <div class="cell" style="background:#fafafa;color:#27272a"><b>5</b>待機中</div>
+                <div class="cell" style="background:#fafafa;color:#27272a"><b>2</b>呼出中</div>
+                <div class="cell" style="background:#fafafa;color:#27272a"><b>12</b>平均(分)</div>
+              </div>
+              <div class="panel">
+                <div class="panel-t" style="text-align:center">呼び出し中 <span class="callouts-num">2</span></div>
+                <div class="list-i" style="background:#fafafa;color:#27272a"><span>最新</span><b style="font-size:20px">29</b><span>14:50</span></div>
+                <div class="list-i" style="background:#fafafa;color:#27272a"><span></span><b style="font-size:20px">28</b><span>14:42</span></div>
+              </div>
+              <div class="note" style="color:#a1a1aa">画面は自動的に更新されます</div>
+            </div>
+          </div>
+          <div>
+            <div class="tbl-wrap" style="margin-top:0">
+              <table>
+                <thead><tr><th>#</th><th>要素</th><th>仕様</th></tr></thead>
+                <tbody>
+                  <tr><td><span class="callouts-num">1</span></td><td>日時</td><td>画面を描画した時点の年月日・時刻。データが更新されて再描画されたときに更新される</td></tr>
+                  <tr><td>―</td><td>統計</td><td>待機中・呼び出し中の件数、平均待ち時間（分、整数）</td></tr>
+                  <tr><td><span class="callouts-num">2</span></td><td>呼び出し中</td><td>呼び出し時刻の新しい順に最大 3 件。先頭に「最新」バッジ。0 件なら「呼び出し中のエントリーはありません」</td></tr>
+                  <tr><td>―</td><td>操作</td><td>なし（参照専用）</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <h3 id="ui-entry"><span class="num">5.5</span>スマホ画面（S-05）</h3>
+        <p>URL のトークンに一致する受付を表示します。状態ごとの表示の違いは <a href="#states-view">7.2</a> を参照してください。</p>
+        <div class="mock-row">
+          <div class="mock">
+            <div class="mock__bar"><i></i><i></i><i></i><span>/entry/K7QX2M9P</span></div>
+            <div class="mock__body">
+              <div class="status-h">🕒 待機中</div>
+              <div class="panel" style="border-radius:0 0 8px 8px;text-align:center">
+                <div class="note">整理券番号</div>
+                <div class="big">32</div>
+                <div class="note" style="margin-bottom:6px">お呼びするまでお待ちください</div>
+                <div class="cell" style="margin-bottom:6px"><span class="note">あなたの前に待っている人</span><b>2</b><span class="note">現在 3 番目</span></div>
+                <span class="btn ghost">キャンセル</span>
+              </div>
+            </div>
+          </div>
+          <div class="mock">
+            <div class="mock__bar"><i></i><i></i><i></i><span>/entry/K7QX2M9P</span></div>
+            <div class="mock__body">
+              <div class="status-h called">🔔 呼び出し中</div>
+              <div class="panel" style="border-radius:0 0 8px 8px;text-align:center">
+                <div class="note">整理券番号</div>
+                <div class="big">32</div>
+                <div class="note" style="margin-bottom:6px">カウンターにお越しください</div>
+                <div class="cell on" style="margin-bottom:6px">呼び出し時刻: 15:10</div>
+                <span class="btn ghost">キャンセル</span>
+              </div>
+            </div>
+          </div>
+          <div class="mock">
+            <div class="mock__bar"><i></i><i></i><i></i><span>/entry/XXXXXXXX</span></div>
+            <div class="mock__body" style="text-align:center;padding:28px 14px">
+              <div class="big" style="opacity:.3">—</div>
+              <h5>エントリーが見つかりません</h5>
+              <div class="note">トークン「XXXXXXXX」に対応するエントリーが存在しないか、既に削除されています。</div>
+            </div>
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>要素</th><th>仕様</th></tr></thead>
+            <tbody>
+              <tr><td>状態ヘッダー</td><td>状態のアイコンと名称。呼び出し中のみ反転（濃色）表示</td></tr>
+              <tr><td>整理券番号・メッセージ</td><td>番号を大きく表示し、状態に応じたメッセージを添える</td></tr>
+              <tr><td>待ち人数（待機中のみ）</td><td>「あなたの前に待っている人」＝ 待機中の中での順位 − 1、「現在 N 番目」</td></tr>
+              <tr><td>呼び出し時刻（呼び出し中のみ）</td><td>最新イベント（called）の時刻</td></tr>
+              <tr><td>アクセストークン</td><td>8 文字のトークンを等幅フォントで表示</td></tr>
+              <tr><td>キャンセル（待機中・呼び出し中のみ）</td><td>確認ダイアログ「整理券をキャンセルしますか？」で OK のとき F-05 を実行</td></tr>
+              <tr><td>詳細情報</td><td>受付日時・最終更新・状態。待機中のときは待機人数（待機中の受付件数）も表示</td></tr>
+              <tr><td>該当なし</td><td>トークンに一致する受付がなければ「エントリーが見つかりません」を表示</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ===================================================== 6 -->
+        <h2 id="functions"><span class="num">6.</span>機能仕様</h2>
+
+        <h3 id="f01"><span class="num">F-01</span>整理券の発行</h3>
+        <div class="spec">
+          <div class="spec__head"><span class="tag c-client">受付端末</span><span class="tag c-muted">actor: staff</span><span class="spec__id">createEntry() / getNextTicketNumber()</span></div>
+          <div class="spec__body">
+            <dl class="kv">
+              <dt>概要</dt><dd>新しい受付を作り、整理券番号・QR コード・トークンを表示する</dd>
+              <dt>入力</dt><dd>人数（1〜6）</dd>
+              <dt>事前条件</dt><dd>tRPC サーバーに接続できること（採番と書き込みに必要）</dd>
+              <dt>処理</dt>
+              <dd>
+                <ol>
+                  <li>tRPC <code>queue.getNextTicketNumber</code> で<strong>仮の番号</strong>（最大番号 + 1）を取得する</li>
+                  <li>受付 ID（UUID v4）と 8 文字のトークンを生成する</li>
+                  <li><code>entry</code> を仮の番号で書き込む（画面に即時反映）。サーバーは待ち行列の行をロックして<strong>確定番号を採番</strong>し、INSERT する。確定（Electric で同期が戻る）まで待つ</li>
+                  <li><code>entry_event</code> に <code>created</code>（actor: staff, device_id: null）を書き込み、確定まで待つ</li>
+                  <li>QR コード画像を生成し、<strong>確定番号</strong>で発行完了モーダルを表示する</li>
+                </ol>
+              </dd>
+              <dt>事後条件</dt><dd>受付が「待機中」となり、全端末の待機リストに表示される。同時に発行されても番号は重複せず、両方とも成功する</dd>
+              <dt>エラー</dt><dd>番号取得失敗：「番号取得エラー: …」／書き込み失敗：「エントリー作成エラー: …」／その他：「エントリー作成に失敗しました」をアラート表示</dd>
+            </dl>
+          </div>
+        </div>
+
+        <div class="callout callout--note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/></svg>
+          <div>
+            <div class="callout__title">F-02〜F-05 に共通する状態遷移の検証</div>
+            <p>
+              状態を変える操作は、書き込む前にクライアント（ローカルのイベント履歴）で、書き込み時にサーバー（DB のイベント履歴、受付の行をロック）で、<a href="#states-list">7.1 の遷移ルール</a>に合うかを検証します。
+              合わない場合は記録せず、「現在の状態（○○）からはこの操作を実行できません」というメッセージで各機能のエラーとして表示します（例：「完了処理エラー: 現在の状態（キャンセル済み）からはこの操作を実行できません」）。
+            </p>
+          </div>
+        </div>
+
+        <h3 id="f02"><span class="num">F-02</span>呼び出し</h3>
+        <div class="spec">
+          <div class="spec__head"><span class="tag c-client">呼び出し端末</span><span class="tag c-muted">actor: staff</span><span class="spec__id">callEntry()</span></div>
+          <div class="spec__body">
+            <dl class="kv">
+              <dt>概要</dt><dd>待機中の先頭（番号が最も小さい）受付を呼び出す</dd>
+              <dt>事前条件</dt><dd>待機中の受付が 1 件以上ある</dd>
+              <dt>処理</dt><dd><code>entry_event</code> に <code>called</code> を書き込む</dd>
+              <dt>事後条件</dt><dd>状態が「呼び出し中」になり、表示端末の「呼び出し中」とお客様スマホに反映される</dd>
+              <dt>エラー</dt><dd>対象なし：「呼び出せるエントリーがありません」／失敗：「呼び出しエラー: …」</dd>
+            </dl>
+          </div>
+        </div>
+
+        <h3 id="f03"><span class="num">F-03</span>完了</h3>
+        <div class="spec">
+          <div class="spec__head"><span class="tag c-client">呼び出し端末</span><span class="tag c-muted">actor: staff</span><span class="spec__id">markEntryDone()</span></div>
+          <div class="spec__body">
+            <dl class="kv">
+              <dt>概要</dt><dd>呼び出し中の受付の対応を完了する</dd>
+              <dt>事前条件</dt><dd>対象が「呼び出し中」（ボタンは呼び出し済みリストにのみ表示）</dd>
+              <dt>処理</dt><dd><code>entry_event</code> に <code>done</code> を書き込む</dd>
+              <dt>事後条件</dt><dd>状態が「完了」になり、完了件数と平均待ち時間に反映される</dd>
+              <dt>エラー</dt><dd>「完了処理エラー: …」</dd>
+            </dl>
+          </div>
+        </div>
+
+        <h3 id="f04"><span class="num">F-04</span>スキップ</h3>
+        <div class="spec">
+          <div class="spec__head"><span class="tag c-client">呼び出し端末</span><span class="tag c-muted">actor: staff</span><span class="spec__id">skipEntry()</span></div>
+          <div class="spec__body">
+            <dl class="kv">
+              <dt>概要</dt><dd>呼び出してもお客様が来ない受付を飛ばす</dd>
+              <dt>事前条件</dt><dd>対象が「呼び出し中」。確認ダイアログで OK を選ぶ</dd>
+              <dt>処理</dt><dd><code>entry_event</code> に <code>skipped</code> を書き込む</dd>
+              <dt>事後条件</dt><dd>状態が「スキップ」（終了状態）になり、呼び出し済みリストから消える</dd>
+              <dt>エラー</dt><dd>「スキップエラー: …」</dd>
+            </dl>
+          </div>
+        </div>
+
+        <h3 id="f05"><span class="num">F-05</span>キャンセル</h3>
+        <div class="spec">
+          <div class="spec__head"><span class="tag c-electric">スマホ画面</span><span class="tag c-muted">actor: user</span><span class="spec__id">cancelEntry()</span></div>
+          <div class="spec__body">
+            <dl class="kv">
+              <dt>概要</dt><dd>お客様が自分の受付を取り消す</dd>
+              <dt>事前条件</dt><dd>対象が「待機中」または「呼び出し中」。確認ダイアログで OK を選ぶ</dd>
+              <dt>処理</dt><dd><code>entry_event</code> に <code>cancelled</code>（actor: user）を書き込む</dd>
+              <dt>事後条件</dt><dd>状態が「キャンセル済み」（終了状態）になり、各端末のリストから消える</dd>
+              <dt>エラー</dt><dd>「キャンセルエラー: …」</dd>
+            </dl>
+          </div>
+        </div>
+
+        <h3 id="f06"><span class="num">F-06</span>状況の表示</h3>
+        <div class="spec">
+          <div class="spec__head"><span class="tag c-client">受付端末</span><span class="tag c-client">表示端末</span><span class="spec__id">useQueueStats() / useCalledEntries()</span></div>
+          <div class="spec__body">
+            <dl class="kv">
+              <dt>概要</dt><dd>待ち行列の件数・平均待ち時間・呼び出し中の番号を表示する</dd>
+              <dt>処理</dt><dd>同期済みのデータからブラウザ内で集計する（サーバーへの問い合わせなし）。算出方法は <a href="#stats">8. 集計仕様</a></dd>
+              <dt>更新</dt><dd>データが同期されるたびに自動で再計算・再描画する</dd>
+            </dl>
+          </div>
+        </div>
+
+        <h3 id="f07"><span class="num">F-07</span>リアルタイム同期</h3>
+        <div class="spec">
+          <div class="spec__head"><span class="tag c-muted">全画面</span><span class="spec__id">ElectricSQL + TanStack DB</span></div>
+          <div class="spec__body">
+            <dl class="kv">
+              <dt>概要</dt><dd>どの端末で書き込んだ変更も、開いているすべての端末に自動で反映する</dd>
+              <dt>同期対象</dt><dd><code>entry</code> と <code>entry_event</code> の全件（各テーブルを 1 つの Shape として購読）</dd>
+              <dt>操作した端末</dt><dd>楽観的更新により、サーバーの応答を待たずに画面へ反映する。書き込みに失敗した場合は元に戻る</dd>
+              <dt>他の端末</dt><dd>PostgreSQL への書き込みが Electric から配信された時点で反映する</dd>
+            </dl>
+          </div>
+        </div>
+
+        <!-- ===================================================== 7 -->
+        <h2 id="states"><span class="num">7.</span>状態仕様</h2>
+        <h3 id="states-list"><span class="num">7.1</span>状態一覧と遷移</h3>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>状態</th><th>表示名</th><th>種類</th><th>遷移元</th><th>きっかけ</th></tr></thead>
+            <tbody>
+              <tr><td><span class="tag c-warn">waiting</span></td><td>待機中</td><td>初期</td><td>―</td><td>F-01 整理券の発行（<code>created</code>）</td></tr>
+              <tr><td><span class="tag c-client">called</span></td><td>呼び出し中</td><td>中間</td><td>waiting</td><td>F-02 呼び出し（<code>called</code>）</td></tr>
+              <tr><td><span class="tag c-ok">done</span></td><td>完了</td><td>終了</td><td>called</td><td>F-03 完了（<code>done</code>）</td></tr>
+              <tr><td><span class="tag c-electric">skipped</span></td><td>スキップ</td><td>終了</td><td>called</td><td>F-04 スキップ（<code>skipped</code>）</td></tr>
+              <tr><td><span class="tag c-danger">cancelled</span></td><td>キャンセル済み</td><td>終了</td><td>waiting / called</td><td>F-05 キャンセル（<code>cancelled</code>）</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>状態は保存されず、受付に紐づくイベントのうち<strong>作成日時が最も新しいもの</strong>から決まります。イベントが 1 件もない受付は waiting とみなします。状態遷移図は<a href="design.html#state-machine">設計書 04</a> を参照してください。</p>
+
+        <h3 id="states-view"><span class="num">7.2</span>状態ごとの画面表示</h3>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>状態</th><th>スマホのヘッダー</th><th>スマホのメッセージ</th><th>キャンセル</th><th>受付端末</th><th>呼び出し端末</th><th>表示端末</th></tr></thead>
+            <tbody>
+              <tr><td><span class="tag c-warn">waiting</span></td><td>🕒 待機中</td><td>お呼びするまでお待ちください</td><td>可</td><td>最新の待機に表示</td><td>次の呼び出し・待機中</td><td>件数のみ</td></tr>
+              <tr><td><span class="tag c-client">called</span></td><td>🔔 呼び出し中（反転）</td><td>カウンターにお越しください</td><td>可</td><td>件数のみ</td><td>呼び出し済み</td><td>呼び出し中（最大 3 件）</td></tr>
+              <tr><td><span class="tag c-ok">done</span></td><td>✓ 完了</td><td>ご利用ありがとうございました</td><td>不可</td><td>完了件数</td><td>―</td><td>―</td></tr>
+              <tr><td><span class="tag c-electric">skipped</span></td><td>» スキップ</td><td>次回お越しください</td><td>不可</td><td>―</td><td>―</td><td>―</td></tr>
+              <tr><td><span class="tag c-danger">cancelled</span></td><td>✕ キャンセル済み</td><td>この受付はキャンセルされました</td><td>不可</td><td>―</td><td>―</td><td>―</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ===================================================== 8 -->
+        <h2 id="stats"><span class="num">8.</span>集計仕様</h2>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>項目</th><th>算出方法</th><th>表示</th></tr></thead>
+            <tbody>
+              <tr><td>待機中</td><td>状態が waiting の受付の件数</td><td>受付・表示</td></tr>
+              <tr><td>呼び出し中</td><td>状態が called の受付の件数</td><td>受付・表示</td></tr>
+              <tr><td>完了</td><td>状態が done の受付の件数</td><td>受付</td></tr>
+              <tr><td>平均待ち時間（分）</td><td>状態が done の受付について「最新イベント（done）の時刻 − 受付時刻」の平均。done が 0 件なら 0</td><td>受付（小数 1 桁）・表示（整数）</td></tr>
+              <tr><td>待ち順位（スマホ）</td><td>待機中の受付を番号順に並べたときの位置（1 始まり）</td><td>スマホ</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout callout--note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/></svg>
+          <div>
+            <p>
+              平均待ち時間は「受付から完了まで」の時間で、呼び出し後の対応時間も含みます。また、集計は<strong>同期されているすべての受付</strong>が対象で、日付による区切りはありません。
+              件数はすべて「受付の件数（組数）」で、人数（<code>party_size</code>）は集計に使っていません。
+            </p>
+          </div>
+        </div>
+
+        <!-- ===================================================== 9 -->
+        <h2 id="data"><span class="num">9.</span>データ仕様</h2>
+        <h3 id="data-tables"><span class="num">9.1</span>テーブル定義</h3>
+        <h4>queue（待ち行列）</h4>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>カラム</th><th>型</th><th>NULL</th><th>既定値</th><th>説明</th></tr></thead>
+            <tbody>
+              <tr><td><code>id</code></td><td>UUID</td><td>×</td><td><code>gen_random_uuid()</code></td><td>主キー</td></tr>
+              <tr><td><code>name</code></td><td>TEXT</td><td>×</td><td>―</td><td>店舗名</td></tr>
+              <tr><td><code>status</code></td><td>TEXT</td><td>×</td><td><code>'open'</code></td><td>open / closed（現在は未使用）</td></tr>
+              <tr><td><code>created_at</code></td><td>TIMESTAMPTZ</td><td>×</td><td><code>now()</code></td><td>作成日時</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h4>entry（受付）</h4>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>カラム</th><th>型</th><th>NULL</th><th>既定値</th><th>説明</th></tr></thead>
+            <tbody>
+              <tr><td><code>id</code></td><td>UUID</td><td>×</td><td><code>gen_random_uuid()</code></td><td>主キー（実際はブラウザで生成した UUID v4 を使用）</td></tr>
+              <tr><td><code>queue_id</code></td><td>UUID</td><td>×</td><td>―</td><td><code>queue.id</code> への外部キー（ON DELETE CASCADE）</td></tr>
+              <tr><td><code>number</code></td><td>INT</td><td>×</td><td>―</td><td>整理券番号。サーバーが待ち行列の行をロックして採番する。<code>(queue_id, number)</code> で一意</td></tr>
+              <tr><td><code>party_size</code></td><td>INT</td><td>×</td><td><code>1</code></td><td>人数</td></tr>
+              <tr><td><code>public_token</code></td><td>TEXT</td><td>×</td><td>―</td><td>スマホ用アクセストークン。一意</td></tr>
+              <tr><td><code>created_at</code></td><td>TIMESTAMPTZ</td><td>×</td><td><code>now()</code></td><td>受付日時（サーバーの <code>now()</code> で設定）</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h4>entry_event（イベント）</h4>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>カラム</th><th>型</th><th>NULL</th><th>既定値</th><th>説明</th></tr></thead>
+            <tbody>
+              <tr><td><code>id</code></td><td>UUID</td><td>×</td><td><code>gen_random_uuid()</code></td><td>主キー</td></tr>
+              <tr><td><code>entry_id</code></td><td>UUID</td><td>×</td><td>―</td><td><code>entry.id</code> への外部キー（ON DELETE CASCADE）</td></tr>
+              <tr><td><code>type</code></td><td>TEXT</td><td>×</td><td>―</td><td><code>created</code> / <code>called</code> / <code>done</code> / <code>skipped</code> / <code>cancelled</code>（CHECK 制約）</td></tr>
+              <tr><td><code>created_at</code></td><td>TIMESTAMPTZ</td><td>×</td><td><code>now()</code></td><td>発生日時（サーバーの <code>now()</code> で設定）</td></tr>
+              <tr><td><code>device_id</code></td><td>TEXT</td><td>○</td><td>―</td><td>操作端末の識別子（現在は常に NULL）</td></tr>
+              <tr><td><code>actor</code></td><td>TEXT</td><td>○</td><td><code>'staff'</code></td><td>操作者：staff / system / user</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="data-validation"><span class="num">9.2</span>入力値の検証</h3>
+        <p>Zod スキーマでクライアント（コレクション）とサーバー（tRPC 入力）の両方で検証します。スキーマは <code>shared/schemas.ts</code> に 1 か所だけ定義し、両方から読み込みます。</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>項目</th><th>ルール</th></tr></thead>
+            <tbody>
+              <tr><td><code>id</code> / <code>queue_id</code> / <code>entry_id</code></td><td>UUID 形式</td></tr>
+              <tr><td><code>number</code></td><td>正の整数（tRPC の入力には含めず、サーバーで採番）</td></tr>
+              <tr><td><code>party_size</code></td><td>正の整数（省略時 1）</td></tr>
+              <tr><td><code>public_token</code></td><td>ちょうど 8 文字、<code>A–Z</code> と <code>0–9</code> のみ</td></tr>
+              <tr><td><code>type</code></td><td><code>created</code> / <code>called</code> / <code>done</code> / <code>skipped</code> / <code>cancelled</code> のいずれか</td></tr>
+              <tr><td><code>actor</code></td><td><code>staff</code> / <code>system</code> / <code>user</code> のいずれか</td></tr>
+              <tr><td><code>device_id</code></td><td>文字列または null</td></tr>
+              <tr><td><code>created_at</code></td><td>クライアントでは Date。サーバーへの入力には含めない（サーバーで <code>now()</code>）</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ===================================================== 10 -->
+        <h2 id="api"><span class="num">10.</span>API 仕様</h2>
+        <h3 id="api-trpc"><span class="num">10.1</span>tRPC プロシージャ</h3>
+        <p>エンドポイントは <code>/trpc</code>。クライアントは <code>httpBatchLink</code> を使うため、URL に <code>?batch=1</code> が付き、入力は <code>{"0": …}</code> の形で送られます。</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>プロシージャ</th><th>種類</th><th>HTTP</th><th>入力</th><th>出力</th></tr></thead>
+            <tbody>
+              <tr><td><code>queue.getNextTicketNumber</code></td><td>query</td><td>GET</td><td>待ち行列 ID（UUID）</td><td><code>{ number: number }</code></td></tr>
+              <tr><td><code>entry.insert</code></td><td>mutation</td><td>POST</td><td><code>{ id, queue_id, party_size, public_token }</code>（番号はサーバーで採番）</td><td><code>{ txid: number, number: number, success: true }</code></td></tr>
+              <tr><td><code>entry.insertEvent</code></td><td>mutation</td><td>POST</td><td><code>{ id, entry_id, type, actor, device_id }</code></td><td><code>{ txid: number, success: true }</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="code">
+          <div class="code__title">例：次の整理券番号の取得</div>
+<pre><span class="c">// リクエスト</span>
+GET /trpc/queue.getNextTicketNumber?batch=1&amp;input={<span class="s">"0"</span>:<span class="s">"a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"</span>}
+
+<span class="c">// レスポンス</span>
+[{ <span class="s">"result"</span>: { <span class="s">"data"</span>: { <span class="s">"number"</span>: <span class="t">35</span> } } }]</pre>
+        </div>
+        <div class="code">
+          <div class="code__title">例：受付の書き込み</div>
+<pre><span class="c">// リクエスト</span>
+POST /trpc/entry.insert?batch=1
+{ <span class="s">"0"</span>: { <span class="s">"id"</span>: <span class="s">"…uuid…"</span>, <span class="s">"queue_id"</span>: <span class="s">"a0eebc99-…"</span>, <span class="s">"party_size"</span>: <span class="t">2</span>, <span class="s">"public_token"</span>: <span class="s">"XTVLLPU2"</span> } }
+
+<span class="c">// レスポンス（number は確定した整理券番号、txid は PostgreSQL のトランザクション ID）</span>
+[{ <span class="s">"result"</span>: { <span class="s">"data"</span>: { <span class="s">"txid"</span>: <span class="t">1234</span>, <span class="s">"number"</span>: <span class="t">35</span>, <span class="s">"success"</span>: <span class="k">true</span> } } }]</pre>
+        </div>
+        <ul>
+          <li><strong>txid</strong>：INSERT と同じトランザクション内で <code>pg_current_xact_id()</code> を取得した値。クライアントは Electric から同じ txid の変更が届くまで待つ</li>
+          <li><strong>採番</strong>：<code>entry.insert</code> は待ち行列の行を <code>FOR UPDATE</code> でロックし、<code>MAX(number) + 1</code> で採番してから INSERT する</li>
+          <li><strong>状態遷移の検証</strong>：<code>entry.insertEvent</code> は受付の行を <code>FOR UPDATE</code> でロックし、既存のイベントから求めた状態に対して遷移ルールを検証する</li>
+        </ul>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>エラーコード</th><th>HTTP</th><th>発生条件</th></tr></thead>
+            <tbody>
+              <tr><td><code>BAD_REQUEST</code></td><td>400</td><td>入力が Zod の検証に失敗した</td></tr>
+              <tr><td><code>NOT_FOUND</code></td><td>404</td><td>指定した待ち行列（insert）または受付（insertEvent）が存在しない</td></tr>
+              <tr><td><code>CONFLICT</code></td><td>409</td><td>状態遷移ルールに合わないイベント（例：待機中の受付への done、2 回目の created）。メッセージ「現在の状態（○○）からはこの操作を実行できません」</td></tr>
+              <tr><td><code>INTERNAL_SERVER_ERROR</code></td><td>500</td><td>その他の DB エラー（トークンの重複など）</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="api-electric"><span class="num">10.2</span>Electric Shape API</h3>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Shape</th><th>リクエスト</th><th>対象</th></tr></thead>
+            <tbody>
+              <tr><td>受付</td><td><code>GET {VITE_ELECTRIC_URL}?table=entry</code></td><td>entry の全行</td></tr>
+              <tr><td>イベント</td><td><code>GET {VITE_ELECTRIC_URL}?table=entry_event</code></td><td>entry_event の全行</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><code>offset</code>・<code>handle</code>・<code>live</code> などのパラメータは <code>@electric-sql/client</code> が自動で付与します。初回は全件、以降はロングポーリングで差分を受け取ります。<code>timestamptz</code> 型は Date に変換します。</p>
+
+        <h3 id="api-other"><span class="num">10.3</span>その他のエンドポイント</h3>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>エンドポイント</th><th>説明</th></tr></thead>
+            <tbody>
+              <tr><td><code>GET /health</code>（tRPC サーバー直下）</td><td>ヘルスチェック。<code>{ "status": "ok" }</code> を返す</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ===================================================== 11 -->
+        <h2 id="nfr"><span class="num">11.</span>非機能仕様</h2>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>分類</th><th>仕様</th></tr></thead>
+            <tbody>
+              <tr><td>即時性</td><td>操作した端末では楽観的更新によりサーバー応答を待たずに表示を更新する</td></tr>
+              <tr><td>リアルタイム性</td><td>他の端末へは Electric のロングポーリングで配信される。手動の再読み込みは不要</td></tr>
+              <tr><td>同時操作</td><td>状態変更はイベントの追記のみのため、行の上書きは起きない。同じ受付への同時操作はサーバーで受付の行をロックして直列化し、遷移ルールに合わないものは拒否する。同時発行は待ち行列の行のロックで直列化し、番号の重複なく両方成功する</td></tr>
+              <tr><td>オフライン</td><td>同期済みのデータの表示は継続するが、書き込み（発行・呼び出し等）はできない。データはメモリ上にあり、再読み込みすると再同期が必要</td></tr>
+              <tr><td>通信の安全性</td><td>ブラウザからのアクセスは Caddy による HTTPS（開発用の自己署名証明書）。<code>VITE_ELECTRIC_URL</code> は https のみ許可</td></tr>
+              <tr><td>対応ブラウザ</td><td><code>crypto.randomUUID()</code> が使える最新のブラウザ（安全なコンテキストが必要）</td></tr>
+              <tr><td>画面サイズ</td><td>スタッフ画面はタブレット・PC（大画面で 2 カラム）、スマホ画面は縦長の 1 カラム</td></tr>
+              <tr><td>ログ</td><td>tRPC サーバーが整理券発行・イベント記録の内容と txid をコンソールに出力する</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ===================================================== 12 -->
+        <h2 id="env"><span class="num">12.</span>環境・運用仕様</h2>
+        <h3 id="env-vars"><span class="num">12.1</span>環境変数</h3>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>変数</th><th>使う場所</th><th>必須</th><th>内容</th></tr></thead>
+            <tbody>
+              <tr><td><code>VITE_LOCAL_IP_ADDRESS</code></td><td>ブラウザ・Caddy</td><td>○</td><td>LAN の IPv4 アドレス（QR の URL とスマホからのアクセス先）</td></tr>
+              <tr><td><code>VITE_LOCAL_HOSTNAME</code></td><td>ブラウザ・Caddy</td><td>○</td><td>PC 用のホスト名（例 <code>queue-app.localhost</code>）</td></tr>
+              <tr><td><code>VITE_DEV_PORT</code></td><td>Vite・Caddy</td><td>―</td><td>Vite のポート（例 5173）</td></tr>
+              <tr><td><code>VITE_ELECTRIC_URL</code></td><td>ブラウザ</td><td>○</td><td>Shape API の URL（https のみ。例 <code>https://{IP}/v1/shape</code>）</td></tr>
+              <tr><td><code>DATABASE_URL</code></td><td>tRPC サーバー</td><td>○</td><td>PostgreSQL の接続 URL</td></tr>
+              <tr><td><code>TRPC_PORT</code></td><td>tRPC サーバー・Vite</td><td>―</td><td>tRPC サーバーのポート（省略時 3001。3000 は Electric が使用）</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>ブラウザ側の変数は <code>env.client.ts</code>、サーバー側の <code>DATABASE_URL</code> は <code>server/database/pool.ts</code> で Zod により検証し、不正な場合は起動時にエラーになります。</p>
+
+        <h3 id="env-ports"><span class="num">12.2</span>ポート</h3>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>ポート</th><th>プロセス</th><th>用途</th></tr></thead>
+            <tbody>
+              <tr><td>443</td><td>Caddy</td><td>HTTPS の入口（PC: ホスト名、スマホ: IP アドレス）</td></tr>
+              <tr><td>5173</td><td>Vite</td><td>画面の配信、<code>/trpc</code> のプロキシ</td></tr>
+              <tr><td>3001</td><td>Hono + tRPC</td><td>書き込み・採番 API</td></tr>
+              <tr><td>3000</td><td>Electric（Docker）</td><td>Shape API</td></tr>
+              <tr><td>5432</td><td>PostgreSQL（Docker）</td><td>データベース</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="env-commands"><span class="num">12.3</span>起動手順</h3>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>順番</th><th>コマンド</th><th>内容</th></tr></thead>
+            <tbody>
+              <tr><td>1</td><td><code>mise install</code> → <code>pnpm install</code></td><td>Node.js 24・pnpm・Caddy と依存パッケージを入れる</td></tr>
+              <tr><td>2</td><td><code>pnpm generate:caddy</code> → <code>caddy run</code></td><td><code>.env</code> から Caddyfile を作り、HTTPS プロキシを起動</td></tr>
+              <tr><td>3</td><td><code>docker compose up -d</code></td><td>PostgreSQL と Electric を起動</td></tr>
+              <tr><td>4</td><td><code>docker exec -i queue-app-postgres psql … &lt; migrations/001_create_tables.sql</code><br><code>… &lt; migrations/002_created_at_timestamptz.sql</code></td><td>テーブル作成と初期データ投入。002 は既存環境の日時列を TIMESTAMPTZ に変換（新規環境では何もしない）</td></tr>
+              <tr><td>5</td><td><code>pnpm dev</code></td><td>Vite（<code>dev:client</code>）と tRPC サーバー（<code>dev:server</code>）を並列起動</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ===================================================== 13 -->
+        <h2 id="limits"><span class="num">13.</span>制約事項・今後の拡張</h2>
+        <h4>制約事項</h4>
+        <ul>
+          <li>待ち行列はデフォルト店舗 1 つのみ（ID は受付端末のコードに固定）</li>
+          <li>認証がなく、URL を知っていればどの画面も開ける</li>
+          <li>オフラインでは整理券の発行・呼び出しなどの書き込みができない</li>
+          <li>全端末が全受付のデータを同期する（スマホも他のお客様の受付情報を受信している）</li>
+          <li>スマホ画面は同期が完了するまで一時的に「エントリーが見つかりません」と表示されることがある</li>
+          <li>受付のデータは削除されず、集計は全期間が対象</li>
+        </ul>
+        <h4>今後の拡張案</h4>
+        <ul>
+          <li>SMS / プッシュ通知による呼び出し通知</li>
+          <li>複数の待ち行列と店舗設定の管理画面</li>
+          <li>営業日ごとの集計・統計ダッシュボード</li>
+          <li>スタッフ画面の認証（PIN など）</li>
+          <li>オフライン書き込みとデータの永続化</li>
+        </ul>
+
+        <nav class="pager" aria-label="前後の資料">
+          <a href="design.html"><small>← 前へ</small>アプリの設計書</a>
+          <a class="next" href="architecture.html"><small>次へ →</small>アーキテクチャの解説</a>
+        </nav>
+      </article>
+    </main>
+  </div>
+  <footer class="site-footer">店舗向け順番待ちアプリ 解説資料 ― 仕様書</footer>
+</body>
+</html>

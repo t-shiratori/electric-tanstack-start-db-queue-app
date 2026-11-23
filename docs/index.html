@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>順番待ちアプリ 解説資料</title>
+  <meta name="description" content="TanStack Start × TanStack DB × ElectricSQL × tRPC で作られた店舗向け順番待ちアプリの解説資料トップ">
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="assets/docs.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="brand" href="index.html"><span class="brand__mark">Q</span>順番待ちアプリ 解説資料</a>
+      <nav class="site-nav" data-site-nav aria-label="資料一覧"></nav>
+      <button class="icon-btn nav-toggle" data-nav-toggle aria-label="メニューを開く"></button>
+      <button class="icon-btn" data-theme-toggle aria-label="テーマ切り替え"></button>
+    </div>
+  </header>
+  <div class="scrim"></div>
+
+  <div class="layout">
+    <aside class="sidenav" data-sidenav data-title="トップ"></aside>
+    <main class="main">
+      <article class="doc">
+        <section class="hero">
+          <div class="eyebrow">Documentation</div>
+          <h1>店舗向け順番待ちアプリ<br>解説資料</h1>
+          <p class="lead">
+            受付・呼び出し・表示・お客様スマホの 4 種類の端末を <strong>1 つの Web アプリ</strong>でまかない、
+            操作した瞬間に<strong>全端末へリアルタイムで反映</strong>される順番待ちシステムです。
+            このサイトでは、その設計・仕様・アーキテクチャ・使われている技術をまとめて解説します。
+          </p>
+          <div class="doc-meta">
+            <span class="chip"><span class="dot c-client"></span>TanStack Start / Router</span>
+            <span class="chip"><span class="dot c-db"></span>TanStack DB</span>
+            <span class="chip"><span class="dot c-electric"></span>ElectricSQL</span>
+            <span class="chip"><span class="dot c-server"></span>Hono + tRPC</span>
+            <span class="chip"><span class="dot c-pg"></span>PostgreSQL 17</span>
+          </div>
+
+          <figure class="figure hero__visual">
+            <div class="figure__scroll">
+              <svg viewBox="0 0 880 340" role="img" aria-labelledby="hero-t">
+                <title id="hero-t">4種類の端末が tRPC で書き込み、ElectricSQL で同期を受け取るシステム全体像</title>
+
+                <!-- 端末 -->
+                <g class="c-client">
+                  <rect class="node" x="20" y="16" width="190" height="92" rx="12"/>
+                  <rect x="40" y="36" width="34" height="46" rx="5" fill="none" stroke="var(--c-client)" stroke-width="1.8"/>
+                  <circle cx="57" cy="76" r="1.8" fill="var(--c-client)"/>
+                  <text x="88" y="54" class="t-b">受付端末</text>
+                  <text x="88" y="74" class="t-sm t-muted">整理券を発行</text>
+                  <text x="88" y="92" class="t-xs t-muted mono">/staff/reception</text>
+
+                  <rect class="node" x="240" y="16" width="190" height="92" rx="12"/>
+                  <rect x="258" y="38" width="42" height="30" rx="3" fill="none" stroke="var(--c-client)" stroke-width="1.8"/>
+                  <path d="M272 76h14M279 68v8" stroke="var(--c-client)" stroke-width="1.8"/>
+                  <text x="312" y="54" class="t-b">呼び出し端末</text>
+                  <text x="312" y="74" class="t-sm t-muted">呼出・完了・スキップ</text>
+                  <text x="312" y="92" class="t-xs t-muted mono">/staff/call</text>
+
+                  <rect class="node" x="460" y="16" width="190" height="92" rx="12"/>
+                  <rect x="476" y="38" width="48" height="30" rx="3" fill="none" stroke="var(--c-client)" stroke-width="1.8"/>
+                  <path d="M488 76l12-8 12 8" fill="none" stroke="var(--c-client)" stroke-width="1.8"/>
+                  <text x="534" y="54" class="t-b">表示端末</text>
+                  <text x="534" y="74" class="t-sm t-muted">呼出番号を掲示</text>
+                  <text x="534" y="92" class="t-xs t-muted mono">/display</text>
+
+                  <rect class="node" x="680" y="16" width="180" height="92" rx="12"/>
+                  <rect x="698" y="34" width="24" height="44" rx="5" fill="none" stroke="var(--c-client)" stroke-width="1.8"/>
+                  <path d="M706 72h8" stroke="var(--c-client)" stroke-width="1.8"/>
+                  <text x="734" y="54" class="t-b">お客様スマホ</text>
+                  <text x="734" y="74" class="t-sm t-muted">自分の順番を確認</text>
+                  <text x="734" y="92" class="t-xs t-muted mono">/entry/$token</text>
+                </g>
+
+                <!-- 書き込みバス（tRPC） -->
+                <g class="c-server">
+                  <path class="edge-c" d="M103 108 V136 M323 108 V136 M758 108 V136" />
+                  <path class="edge-c" d="M103 136 H758" />
+                  <path class="edge-c" d="M250 136 V178" marker-end="url(#ah-server)"/>
+                </g>
+                <!-- 読み取りバス（Electric） -->
+                <g class="c-electric">
+                  <path class="edge-c dash" d="M630 196 V154 H127" />
+                  <path class="edge-c dash" d="M127 154 V112" marker-end="url(#ah-electric)"/>
+                  <path class="edge-c dash" d="M347 154 V112" marker-end="url(#ah-electric)"/>
+                  <path class="edge-c dash" d="M567 154 V112" marker-end="url(#ah-electric)"/>
+                  <path class="edge-c dash" d="M782 154 V112" marker-end="url(#ah-electric)"/>
+                  <path class="edge-c dash" d="M630 154 H782" />
+                </g>
+
+                <!-- サーバー側 -->
+                <g class="c-server">
+                  <rect class="node" x="120" y="182" width="260" height="56" rx="12"/>
+                  <text x="250" y="206" text-anchor="middle" class="t-b">Hono + tRPC サーバー</text>
+                  <text x="250" y="226" text-anchor="middle" class="t-sm t-muted">書き込み・採番（型安全な RPC）</text>
+                </g>
+                <g class="c-electric">
+                  <rect class="node" x="500" y="198" width="260" height="56" rx="12"/>
+                  <text x="630" y="222" text-anchor="middle" class="t-b">ElectricSQL</text>
+                  <text x="630" y="242" text-anchor="middle" class="t-sm t-muted">変更をリアルタイム配信（Shape API）</text>
+                </g>
+                <g class="c-pg">
+                  <path d="M300 286 v34 a140 12 0 0 0 280 0 v-34" class="node"/>
+                  <ellipse cx="440" cy="286" rx="140" ry="12" class="node"/>
+                  <text x="440" y="314" text-anchor="middle" class="t-b">PostgreSQL</text>
+                </g>
+                <path class="edge-c c-server" d="M250 238 V300 H296" marker-end="url(#ah-server)"/>
+                <path class="edge-c c-pg" d="M584 300 H630 V258" marker-end="url(#ah-pg)"/>
+
+                <!-- ラベル -->
+                <rect x="400" y="124" width="76" height="22" rx="11" class="pill-bg"/>
+                <text x="438" y="139" text-anchor="middle" class="t-xs t-b" fill="var(--c-server)" style="fill:var(--c-server)">① 書き込み</text>
+                <rect x="400" y="160" width="76" height="22" rx="11" class="pill-bg"/>
+                <text x="438" y="175" text-anchor="middle" class="t-xs t-b" style="fill:var(--c-electric)">③ 全端末へ</text>
+                <text x="268" y="274" class="t-xs t-muted">INSERT</text>
+                <text x="640" y="282" class="t-xs t-muted">② WAL（論理レプリケーション）</text>
+              </svg>
+            </div>
+            <div class="legend">
+              <span class="c-client"><i></i>端末（同じ Web アプリの別画面）</span>
+              <span class="c-server"><i class="line"></i>書き込み（tRPC）</span>
+              <span class="c-electric"><i class="dash"></i>読み取り同期（Electric）</span>
+            </div>
+            <figcaption>図 1. システムの全体像 ― 書き込みは tRPC、読み取りは Electric という一方通行のループで全端末が同期する</figcaption>
+          </figure>
+        </section>
+
+        <h2 id="about">このアプリの 3 つの特徴</h2>
+        <div class="cards">
+          <div class="card card--accent c-electric">
+            <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></div>
+            <h4>リアルタイム同期</h4>
+            <p>呼び出し端末で「呼び出す」を押すと、表示端末とお客様のスマホに即座に反映されます。ポーリングや再読み込みは不要です。</p>
+          </div>
+          <div class="card card--accent c-domain">
+            <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
+            <h4>イベントソーシング</h4>
+            <p>受付の「状態」は保存しません。「呼び出した」「完了した」という出来事（イベント）だけを追記し、現在の状態はそこから計算します。</p>
+          </div>
+          <div class="card card--accent c-client">
+            <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8"/></svg></div>
+            <h4>1 リポジトリで全端末</h4>
+            <p>端末ごとに別アプリは作りません。違いは URL（画面）だけで、データ・同期・状態計算のしくみは全端末で共通です。</p>
+          </div>
+        </div>
+
+        <h2 id="documents">資料一覧</h2>
+        <div class="cards cards--2">
+          <a class="card c-domain" href="design.html">
+            <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6"/></svg></div>
+            <h4>アプリの設計書</h4>
+            <p>データモデル、イベントソーシング、状態遷移、マテリアライズドビュー、書き込み方式など「なぜこう作ったか」を説明します。</p>
+            <span class="more">設計書を読む →</span>
+          </a>
+          <a class="card c-client" href="spec.html">
+            <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h8l4 4v14H7z"/><path d="M15 3v4h4M10 12h6M10 16h6"/></svg></div>
+            <h4>アプリの仕様書</h4>
+            <p>画面・機能・状態・データ・API・非機能要件を項目ごとに定義した仕様書です。目次とサイドナビ付き。</p>
+            <span class="more">仕様書を読む →</span>
+          </a>
+          <a class="card c-server" href="architecture.html">
+            <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="8.5" y="14" width="7" height="7" rx="1.5"/><path d="M6.5 10v2h11v-2M12 12v2"/></svg></div>
+            <h4>アーキテクチャの解説</h4>
+            <p>プロセス構成、リクエストの経路、読み取りと書き込みの分離、処理シーケンスを図で解説します。</p>
+            <span class="more">アーキテクチャを読む →</span>
+          </a>
+          <a class="card c-infra" href="structure.html">
+            <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h6l2 2h10v11H3z"/></svg></div>
+            <h4>構成・構造の解説</h4>
+            <p>ディレクトリ構成、各レイヤーの責務、モジュールの依存関係、設定ファイルの役割をまとめます。</p>
+            <span class="more">構成・構造を読む →</span>
+          </a>
+          <a class="card c-electric" href="tech-tanstack-db-electric.html">
+            <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg></div>
+            <h4>技術解説：TanStack DB × Electric</h4>
+            <p>Shape による同期、コレクション、ライブクエリ、楽観的更新、txid による確定待ちのしくみを解説します。</p>
+            <span class="more">技術解説を読む →</span>
+          </a>
+          <a class="card c-db" href="tech-materialized-view.html">
+            <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16M4 12h10M4 19h6"/><path d="m15 16 3 3 4-5"/></svg></div>
+            <h4>技術解説：マテリアライズドビュー</h4>
+            <p>状態を保存せずイベントから導出するビューを、なぜブラウザで作るのか、どう組み立てて更新しているのかを解説します。</p>
+            <span class="more">技術解説を読む →</span>
+          </a>
+          <a class="card c-server" href="tech-trpc.html">
+            <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></svg></div>
+            <h4>技術解説：tRPC</h4>
+            <p>サーバーの型をクライアントがそのまま使う仕組み、Hono との統合、リクエストの中身、開発時の構成を解説します。</p>
+            <span class="more">技術解説を読む →</span>
+          </a>
+        </div>
+
+        <h2 id="reading-order">おすすめの読み順</h2>
+        <ol class="reading-order">
+          <li><div><a href="spec.html">仕様書</a><br><span class="muted small">まず「何ができるアプリか」を画面と機能から掴みます。</span></div></li>
+          <li><div><a href="architecture.html">アーキテクチャの解説</a><br><span class="muted small">どのプロセスがどう繋がり、データがどこを流れるかを把握します。</span></div></li>
+          <li><div><a href="design.html">設計書</a><br><span class="muted small">状態を保存しない理由や、書き込み・同期の設計判断を理解します。</span></div></li>
+          <li><div><a href="structure.html">構成・構造の解説</a><br><span class="muted small">コードを読む前に、どのファイルが何を担当しているかを確認します。</span></div></li>
+          <li><div><a href="tech-tanstack-db-electric.html">TanStack DB × Electric</a> → <a href="tech-materialized-view.html">マテリアライズドビュー</a> → <a href="tech-trpc.html">tRPC</a><br><span class="muted small">このアプリの中核技術を掘り下げます。</span></div></li>
+        </ol>
+
+        <h2 id="stack">技術スタック</h2>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>分類</th><th>技術</th><th>バージョン</th><th>このアプリでの役割</th></tr></thead>
+            <tbody>
+              <tr><td>フレームワーク</td><td>TanStack Start / Router</td><td><code>1.169.7</code> / <code>1.170.46</code></td><td>ファイルベースのルーティングと画面描画</td></tr>
+              <tr><td>UI</td><td>React</td><td><code>19.3.1</code></td><td>画面コンポーネント</td></tr>
+              <tr><td>ローカル DB</td><td>TanStack DB</td><td><code>1.0.0-rc.1.5</code></td><td>コレクション・ライブクエリ・楽観的更新</td></tr>
+              <tr><td>同期</td><td>ElectricSQL（<code>@electric-sql/client</code>）</td><td><code>1.5.28</code></td><td>PostgreSQL の変更をブラウザへ配信</td></tr>
+              <tr><td>API</td><td>tRPC / Hono</td><td><code>11.29.5</code> / <code>4.13.19</code></td><td>書き込みと採番の API サーバー</td></tr>
+              <tr><td>バリデーション</td><td>Zod</td><td><code>4.6.7</code></td><td>スキーマ定義・入力検証・環境変数検証</td></tr>
+              <tr><td>データベース</td><td>PostgreSQL</td><td><code>17</code></td><td>唯一の正のデータ（<code>wal_level=logical</code>）</td></tr>
+              <tr><td>スタイル</td><td>Tailwind CSS</td><td><code>4.3.5</code></td><td>画面のスタイリング</td></tr>
+              <tr><td>ビルド</td><td>Vite / TypeScript</td><td><code>8.3.8</code> / <code>7.0.2</code></td><td>開発サーバー・プロキシ・型チェック</td></tr>
+              <tr><td>品質</td><td>Biome</td><td><code>2.6.8</code></td><td>リント・フォーマット</td></tr>
+              <tr><td>開発環境</td><td>mise / Caddy / Docker Compose</td><td>Node <code>24</code>・pnpm <code>12.21.0</code>・Caddy <code>2.11.4</code></td><td>ツール管理・HTTPS 化・DB と Electric の起動</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="quickstart">クイックスタート</h2>
+        <p>詳しい手順はリポジトリの <code>README.md</code> を参照してください。おおまかな流れは次のとおりです。</p>
+        <div class="flow">
+          <div><b>ツールを入れる</b><code>mise install</code><br><code>pnpm install</code></div>
+          <div><b>環境変数</b><code>.env</code> を作成し、IP アドレスなどを設定</div>
+          <div><b>HTTPS 化</b><code>pnpm generate:caddy</code><br><code>caddy run</code></div>
+          <div><b>DB と Electric</b><code>docker compose up -d</code> とマイグレーション</div>
+          <div><b>開発サーバー</b><code>pnpm dev</code>（Vite と tRPC を同時起動）</div>
+        </div>
+        <p>ブラウザで <code>https://queue-app.localhost</code> を開くとホーム画面が表示されます。</p>
+      </article>
+    </main>
+  </div>
+
+  <footer class="site-footer">店舗向け順番待ちアプリ 解説資料 ― リポジトリ内 <code>docs/</code></footer>
+</body>
+</html>

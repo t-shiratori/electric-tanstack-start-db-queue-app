@@ -1,0 +1,662 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>アプリ設計書</title>
+  <meta name="description" content="店舗向け順番待ちアプリの設計書。データモデル、イベントソーシング、状態遷移、読み取りモデル、書き込み方式などの設計判断を解説します。">
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="assets/docs.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="brand" href="index.html"><span class="brand__mark">Q</span>順番待ちアプリ 解説資料</a>
+      <nav class="site-nav" data-site-nav aria-label="資料一覧"></nav>
+      <button class="icon-btn nav-toggle" data-nav-toggle aria-label="メニューを開く"></button>
+      <button class="icon-btn" data-theme-toggle aria-label="テーマ切り替え"></button>
+    </div>
+  </header>
+  <div class="scrim"></div>
+
+  <div class="layout">
+    <aside class="sidenav" data-sidenav data-title="設計書の目次"></aside>
+    <main class="main">
+      <article class="doc">
+        <div class="eyebrow">Design Document</div>
+        <h1>アプリの設計書</h1>
+        <p class="lead">
+          この設計書は「どう作られているか」と「なぜそう作ったか」をまとめたものです。
+          画面ごとの振る舞いは<a href="spec.html">仕様書</a>、プロセスや通信経路は<a href="architecture.html">アーキテクチャの解説</a>を参照してください。
+        </p>
+        <div class="doc-meta">
+          <span class="chip">対象: <code>main</code> ブランチ</span>
+          <span class="chip">データ: PostgreSQL 3 テーブル</span>
+          <span class="chip">状態: イベントから導出</span>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="principles"><span class="num">01</span>設計方針</h2>
+        <p>
+          このアプリは「紙の整理券のように止まらず、クラウドサービスのように全端末で状態を共有できる」順番待ちシステムを目指しています。
+          そのために、次の 5 つの方針で設計されています。
+        </p>
+        <div class="cards">
+          <div class="card card--accent c-domain">
+            <h4>① 状態を保存しない</h4>
+            <p>受付（entry）には「待機中」「呼び出し中」といった状態の列を持たせません。状態の変化を<strong>イベントとして追記</strong>し、現在の状態は毎回計算します。</p>
+          </div>
+          <div class="card card--accent c-electric">
+            <h4>② 読み取りと書き込みを分ける</h4>
+            <p>読み取りは Electric による同期、書き込みは tRPC による API 呼び出しと、<strong>経路を完全に分離</strong>しています。</p>
+          </div>
+          <div class="card card--accent c-db">
+            <h4>③ UI はローカルのデータを見る</h4>
+            <p>画面はサーバーに問い合わせず、ブラウザ内の TanStack DB を<strong>ライブクエリ</strong>で参照します。操作は楽観的に即時反映されます。</p>
+          </div>
+          <div class="card card--accent c-client">
+            <h4>④ 1 アプリで全端末</h4>
+            <p>受付・呼び出し・表示・スマホは同じアプリの<strong>別ルート</strong>です。端末の違いは「どの画面を開くか」だけで表現します。</p>
+          </div>
+          <div class="card card--accent c-infra">
+            <h4>⑤ レイヤーを分ける</h4>
+            <p>ドメイン（ビジネスルール）をフレームワークから切り離し、リポジトリのインターフェース越しにインフラを使います。</p>
+          </div>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="data-model"><span class="num">02</span>データモデル設計</h2>
+        <p>
+          データベースは <code>queue</code>（待ち行列）→ <code>entry</code>（受付）→ <code>entry_event</code>（出来事の記録）の 3 段の親子構造です。
+          定義は <code>migrations/001_create_tables.sql</code> にあります（<code>002</code> で既存環境の <code>created_at</code> を <code>TIMESTAMPTZ</code> に変換）。
+          日時列はタイムゾーン付きの <code>TIMESTAMPTZ</code> で、時刻を「絶対的な瞬間」として保存するため、どのタイムゾーンの端末でも正しい時刻で表示されます。
+        </p>
+
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 880 250" role="img" aria-labelledby="er-t">
+              <title id="er-t">queue、entry、entry_event の ER 図</title>
+              <!-- queue -->
+              <g class="c-infra">
+                <rect class="node" x="16" y="40" width="250" height="138" rx="10"/>
+                <path d="M16 74 H266" stroke="var(--c-infra)" stroke-width="1.2"/>
+                <text x="30" y="62" class="t-b t-lg mono">queue</text>
+                <text x="252" y="62" text-anchor="end" class="t-xs t-muted">待ち行列（店舗・窓口）</text>
+              </g>
+              <g class="t-sm">
+                <text x="28" y="92" class="t-xs t-b" style="fill:var(--warn)">PK</text><text x="56" y="92" class="mono t-sm">id</text><text x="254" y="92" text-anchor="end" class="mono t-xs t-muted">UUID</text>
+                <text x="56" y="118" class="mono t-sm">name</text><text x="254" y="118" text-anchor="end" class="mono t-xs t-muted">TEXT</text>
+                <text x="56" y="144" class="mono t-sm">status</text><text x="254" y="144" text-anchor="end" class="mono t-xs t-muted">TEXT 'open'</text>
+                <text x="56" y="170" class="mono t-sm">created_at</text><text x="254" y="170" text-anchor="end" class="mono t-xs t-muted">TIMESTAMPTZ</text>
+              </g>
+
+              <!-- entry -->
+              <g class="c-client">
+                <rect class="node" x="315" y="40" width="250" height="190" rx="10"/>
+                <path d="M315 74 H565" stroke="var(--c-client)" stroke-width="1.2"/>
+                <text x="329" y="62" class="t-b t-lg mono">entry</text>
+                <text x="551" y="62" text-anchor="end" class="t-xs t-muted">受付（不変・状態なし）</text>
+              </g>
+              <g>
+                <text x="327" y="92" class="t-xs t-b" style="fill:var(--warn)">PK</text><text x="355" y="92" class="mono t-sm">id</text><text x="553" y="92" text-anchor="end" class="mono t-xs t-muted">UUID</text>
+                <text x="327" y="118" class="t-xs t-b" style="fill:var(--c-client)">FK</text><text x="355" y="118" class="mono t-sm">queue_id</text><text x="553" y="118" text-anchor="end" class="mono t-xs t-muted">UUID</text>
+                <text x="355" y="144" class="mono t-sm">number</text><text x="553" y="144" text-anchor="end" class="mono t-xs t-muted">INT</text>
+                <text x="355" y="170" class="mono t-sm">party_size</text><text x="553" y="170" text-anchor="end" class="mono t-xs t-muted">INT 1</text>
+                <text x="327" y="196" class="t-xs t-b" style="fill:var(--c-domain)">UQ</text><text x="355" y="196" class="mono t-sm">public_token</text><text x="553" y="196" text-anchor="end" class="mono t-xs t-muted">TEXT</text>
+                <text x="355" y="222" class="mono t-sm">created_at</text><text x="553" y="222" text-anchor="end" class="mono t-xs t-muted">TIMESTAMPTZ</text>
+              </g>
+
+              <!-- entry_event -->
+              <g class="c-domain">
+                <rect class="node" x="614" y="40" width="250" height="190" rx="10"/>
+                <path d="M614 74 H864" stroke="var(--c-domain)" stroke-width="1.2"/>
+                <text x="628" y="62" class="t-b t-lg mono">entry_event</text>
+                <text x="850" y="62" text-anchor="end" class="t-xs t-muted">追記のみ</text>
+              </g>
+              <g>
+                <text x="626" y="92" class="t-xs t-b" style="fill:var(--warn)">PK</text><text x="654" y="92" class="mono t-sm">id</text><text x="852" y="92" text-anchor="end" class="mono t-xs t-muted">UUID</text>
+                <text x="626" y="118" class="t-xs t-b" style="fill:var(--c-client)">FK</text><text x="654" y="118" class="mono t-sm">entry_id</text><text x="852" y="118" text-anchor="end" class="mono t-xs t-muted">UUID</text>
+                <text x="654" y="144" class="mono t-sm">type</text><text x="852" y="144" text-anchor="end" class="mono t-xs t-muted">TEXT CHECK</text>
+                <text x="654" y="170" class="mono t-sm">created_at</text><text x="852" y="170" text-anchor="end" class="mono t-xs t-muted">TIMESTAMPTZ</text>
+                <text x="654" y="196" class="mono t-sm">device_id</text><text x="852" y="196" text-anchor="end" class="mono t-xs t-muted">TEXT NULL</text>
+                <text x="654" y="222" class="mono t-sm">actor</text><text x="852" y="222" text-anchor="end" class="mono t-xs t-muted">TEXT 'staff'</text>
+              </g>
+
+              <!-- relations -->
+              <path class="edge" d="M266 87 H290 V113 H315"/>
+              <path class="edge" d="M274 81 V93 M279 81 V93"/>
+              <path class="edge" d="M303 113 L315 105 M303 113 L315 121"/>
+              <text x="280" y="76" class="t-xs t-muted">1</text>
+              <text x="296" y="132" class="t-xs t-muted">N</text>
+
+              <path class="edge" d="M565 87 H589 V113 H614"/>
+              <path class="edge" d="M573 81 V93 M578 81 V93"/>
+              <path class="edge" d="M602 113 L614 105 M602 113 L614 121"/>
+              <text x="579" y="76" class="t-xs t-muted">1</text>
+              <text x="595" y="132" class="t-xs t-muted">N</text>
+
+              <text x="16" y="22" class="t-xs t-muted">ON DELETE CASCADE（親を消すと子も消える）／ UNIQUE(queue_id, number)</text>
+            </svg>
+          </div>
+          <figcaption>図 2-1. ER 図 ― 1 つの待ち行列に多数の受付、1 つの受付に多数のイベントがぶら下がる</figcaption>
+        </figure>
+
+        <h3 id="data-tables">テーブルの役割</h3>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>テーブル</th><th>役割</th><th>更新のされ方</th><th>主な制約</th></tr></thead>
+            <tbody>
+              <tr><td><code>queue</code></td><td>店舗・窓口などの待ち行列。現在は初期データの「デフォルト店舗」1 件のみ</td><td>マイグレーション時に投入</td><td><code>status</code> 既定値 <code>'open'</code></td></tr>
+              <tr><td><code>entry</code></td><td>1 組の受付。番号・人数・スマホ用トークンなど<strong>作成後に変わらない値</strong>だけを持つ</td><td>INSERT のみ</td><td><code>UNIQUE(queue_id, number)</code>、<code>public_token UNIQUE</code></td></tr>
+              <tr><td><code>entry_event</code></td><td>状態変化の履歴。<strong>唯一の正のデータ</strong>として扱う</td><td>INSERT のみ（追記専用）</td><td><code>type IN ('created','called','done','skipped','cancelled')</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="data-index">インデックス</h3>
+        <p>画面は全件を同期してブラウザ側で集計するため、インデックスは主に採番クエリと Electric の初期同期、将来の絞り込みに備えたものです。</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>インデックス</th><th>対象</th><th>想定する利用</th></tr></thead>
+            <tbody>
+              <tr><td><code>idx_entry_queue</code></td><td><code>entry(queue_id)</code></td><td>待ち行列ごとの受付の取得</td></tr>
+              <tr><td><code>idx_entry_number</code></td><td><code>entry(queue_id, number)</code></td><td>採番（<code>MAX(number)</code>）</td></tr>
+              <tr><td><code>idx_entry_public_token</code></td><td><code>entry(public_token)</code></td><td>トークンからの受付検索</td></tr>
+              <tr><td><code>idx_entry_event_entry</code></td><td><code>entry_event(entry_id)</code></td><td>受付ごとのイベント取得（JOIN）</td></tr>
+              <tr><td><code>idx_entry_event_created_at</code></td><td><code>entry_event(created_at DESC)</code></td><td>最新イベントの取得</td></tr>
+              <tr><td><code>idx_entry_event_type</code></td><td><code>entry_event(type)</code></td><td>種類別の集計</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="data-naming">命名の変換（DB ↔ ドメイン）</h3>
+        <p>
+          DB とインフラ層は <code>snake_case</code>、ドメイン層は <code>camelCase</code> を使います。変換は
+          <code>app/infrastructure/database/mappers/</code> と <code>app/domain/entry/event-types.ts</code> が担当します。
+        </p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>DB（entry / entry_event）</th><th>ドメイン（Entry / EntryEvent）</th></tr></thead>
+            <tbody>
+              <tr><td><code>number</code></td><td><code>ticketNumber</code></td></tr>
+              <tr><td><code>public_token</code></td><td><code>token</code></td></tr>
+              <tr><td><code>created_at</code></td><td><code>createdAt</code></td></tr>
+              <tr><td><code>entry_id</code></td><td><code>entryId</code></td></tr>
+              <tr><td><code>type: 'created' | 'called' | 'done' | 'skipped' | 'cancelled'</code></td><td><code>type: 'EntryCreated' | 'EntryCalled' | 'EntryDone' | 'EntrySkipped' | 'EntryCancelled'</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="event-sourcing"><span class="num">03</span>イベントソーシング設計</h2>
+        <p>
+          受付の「現在の状態」はどこにも保存されていません。<code>entry</code>（不変の情報）と <code>entry_event</code>（出来事の履歴）を組み合わせ、
+          <strong>最新のイベントの種類</strong>から状態を毎回計算します。
+        </p>
+
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 880 250" role="img" aria-labelledby="es-t">
+              <title id="es-t">entry と entry_event から現在の状態を導出する流れ</title>
+              <!-- entry -->
+              <g class="c-client">
+                <rect class="node" x="16" y="30" width="190" height="96" rx="10"/>
+                <text x="30" y="54" class="t-b mono">entry</text>
+                <text x="30" y="78" class="t-sm">number: <tspan class="t-b">12</tspan></text>
+                <text x="30" y="98" class="t-sm">party_size: 2</text>
+                <text x="30" y="116" class="t-sm mono t-muted">token: K7QX2M9P</text>
+              </g>
+              <text x="111" y="148" text-anchor="middle" class="t-xs t-muted">作成後に変わらない</text>
+
+              <!-- events -->
+              <g class="c-domain">
+                <rect class="zone" x="240" y="16" width="330" height="218" rx="12"/>
+                <text x="254" y="38" class="t-b mono">entry_event（追記のみ）</text>
+                <rect class="node" x="256" y="52" width="298" height="40" rx="8"/>
+                <text x="270" y="77" class="t-sm mono">10:00</text><text x="330" y="77" class="t-sm t-b">created</text><text x="540" y="77" text-anchor="end" class="t-xs t-muted">受付端末</text>
+                <rect class="node" x="256" y="100" width="298" height="40" rx="8"/>
+                <text x="270" y="125" class="t-sm mono">10:12</text><text x="330" y="125" class="t-sm t-b">called</text><text x="540" y="125" text-anchor="end" class="t-xs t-muted">呼び出し端末</text>
+                <rect class="node-solid" x="256" y="148" width="298" height="40" rx="8"/>
+                <text x="270" y="173" class="t-sm mono t-inv">10:15</text><text x="330" y="173" class="t-sm t-b t-inv">done</text><text x="540" y="173" text-anchor="end" class="t-xs t-inv">最新</text>
+                <text x="405" y="216" text-anchor="middle" class="t-xs t-muted">↑ 時間とともに下へ積み上がる（消さない・書き換えない）</text>
+              </g>
+
+              <!-- calc -->
+              <path class="edge" d="M206 78 H236" marker-end="url(#ah)"/>
+              <path class="edge-c c-domain" d="M570 168 H620" marker-end="url(#ah-domain)"/>
+              <g class="c-domain">
+                <rect class="box-2" x="624" y="126" width="240" height="84" rx="10"/>
+                <text x="744" y="150" text-anchor="middle" class="t-sm mono t-b">calculateCurrentState()</text>
+                <text x="744" y="172" text-anchor="middle" class="t-xs t-muted">作成日時で並べ替え、</text>
+                <text x="744" y="190" text-anchor="middle" class="t-xs t-muted">最新イベントの種類 → 状態</text>
+              </g>
+              <path class="edge-c c-domain" d="M744 126 V96" marker-end="url(#ah-domain)"/>
+              <g>
+                <rect class="node c-ok" x="644" y="30" width="200" height="62" rx="10"/>
+                <text x="744" y="54" text-anchor="middle" class="t-xs t-muted">EntryWithState（保存しない）</text>
+                <text x="744" y="78" text-anchor="middle" class="t-lg t-b">state = "done"</text>
+              </g>
+            </svg>
+          </div>
+          <figcaption>図 3-1. 状態の導出 ― 状態は「保存された値」ではなく「履歴から計算した結果」</figcaption>
+        </figure>
+
+        <h3 id="es-why">状態を持たない理由</h3>
+        <div class="compare">
+          <div class="card">
+            <h4><span class="tag c-danger">よくある設計</span> entry.status を UPDATE する</h4>
+            <ul>
+              <li>2 台の端末が同時に更新すると、<strong>後から書いた方が勝ち</strong>、先の操作が消える</li>
+              <li>「いつ・誰が呼び出したか」を残すには別の履歴テーブルが必要</li>
+              <li>同期中の端末に「行の書き換え」を正しく届ける必要がある</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h4><span class="tag c-ok">この設計</span> entry_event を INSERT するだけ</h4>
+            <ul>
+              <li>書き込みは常に<strong>新しい行の追加</strong>なので、同時操作でも行の取り合いが起きない</li>
+              <li>履歴がそのまま監査ログになり、平均待ち時間なども後から計算できる</li>
+              <li>同期されるのは「行の追加」だけで、端末側の状態計算は全端末で同じ結果になる</li>
+            </ul>
+          </div>
+        </div>
+
+        <h3 id="es-rules">状態の導出ルール</h3>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>最新イベント（DB）</th><th>ドメインイベント</th><th>導出される状態</th><th>意味</th></tr></thead>
+            <tbody>
+              <tr><td><em class="muted">（イベントなし）</em></td><td>―</td><td><span class="tag c-warn">waiting</span></td><td>同期の途中などでイベントがまだ届いていない場合も待機中とみなす</td></tr>
+              <tr><td><code>created</code></td><td><code>EntryCreated</code></td><td><span class="tag c-warn">waiting</span></td><td>待機中</td></tr>
+              <tr><td><code>called</code></td><td><code>EntryCalled</code></td><td><span class="tag c-client">called</span></td><td>呼び出し中</td></tr>
+              <tr><td><code>done</code></td><td><code>EntryDone</code></td><td><span class="tag c-ok">done</span></td><td>対応完了</td></tr>
+              <tr><td><code>skipped</code></td><td><code>EntrySkipped</code></td><td><span class="tag c-electric">skipped</span></td><td>不在などで飛ばした</td></tr>
+              <tr><td><code>cancelled</code></td><td><code>EntryCancelled</code></td><td><span class="tag c-danger">cancelled</span></td><td>取り消し</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="code">
+          <div class="code__title">app/domain/entry/state.ts（抜粋）</div>
+<pre><span class="k">export function</span> <span class="f">calculateCurrentState</span>(events: EntryEvent[]): EntryState {
+  <span class="k">if</span> (events.length === <span class="t">0</span>) <span class="k">return</span> ENTRY_STATE.WAITING;
+  <span class="c">// 作成時刻の新しい順に並べ、先頭（最新）のイベントから状態を決める</span>
+  <span class="k">const</span> sorted = [...events].<span class="f">sort</span>((a, b) =&gt; b.createdAt.<span class="f">getTime</span>() - a.createdAt.<span class="f">getTime</span>());
+  <span class="k">return</span> EVENT_TYPE_TO_STATE[sorted[<span class="t">0</span>].type];
+}</pre>
+        </div>
+        <p>この関数はフレームワークに依存しない純粋な関数で、ドメイン層（<code>app/domain</code>）に置かれています。</p>
+
+        <!-- ===================================================== -->
+        <h2 id="state-machine"><span class="num">04</span>状態遷移設計</h2>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 880 290" role="img" aria-labelledby="sm-t">
+              <title id="sm-t">受付の状態遷移図</title>
+              <circle cx="36" cy="120" r="9" fill="var(--ink)"/>
+              <path class="edge" d="M45 120 H96" marker-end="url(#ah)"/>
+              <text x="70" y="108" text-anchor="middle" class="t-xs t-muted">発行</text>
+
+              <g class="c-warn"><rect class="node" x="100" y="92" width="150" height="56" rx="28"/>
+                <text x="175" y="116" text-anchor="middle" class="t-b">waiting</text><text x="175" y="135" text-anchor="middle" class="t-xs t-muted">待機中</text></g>
+              <g class="c-client"><rect class="node" x="380" y="92" width="150" height="56" rx="28"/>
+                <text x="455" y="116" text-anchor="middle" class="t-b">called</text><text x="455" y="135" text-anchor="middle" class="t-xs t-muted">呼び出し中</text></g>
+
+              <g class="c-ok"><rect class="node" x="690" y="20" width="150" height="56" rx="28"/><rect x="694" y="24" width="142" height="48" rx="24" fill="none" stroke="var(--ok)" stroke-width="1"/>
+                <text x="765" y="44" text-anchor="middle" class="t-b">done</text><text x="765" y="62" text-anchor="middle" class="t-xs t-muted">完了</text></g>
+              <g class="c-electric"><rect class="node" x="690" y="140" width="150" height="56" rx="28"/><rect x="694" y="144" width="142" height="48" rx="24" fill="none" stroke="var(--c-electric)" stroke-width="1"/>
+                <text x="765" y="164" text-anchor="middle" class="t-b">skipped</text><text x="765" y="182" text-anchor="middle" class="t-xs t-muted">スキップ</text></g>
+              <g class="c-danger"><rect class="node" x="380" y="220" width="150" height="56" rx="28"/><rect x="384" y="224" width="142" height="48" rx="24" fill="none" stroke="var(--danger)" stroke-width="1"/>
+                <text x="455" y="244" text-anchor="middle" class="t-b">cancelled</text><text x="455" y="262" text-anchor="middle" class="t-xs t-muted">キャンセル</text></g>
+
+              <path class="edge-c c-client" d="M250 120 H376" marker-end="url(#ah-client)"/>
+              <text x="313" y="110" text-anchor="middle" class="t-sm t-b">呼び出す</text>
+              <text x="313" y="138" text-anchor="middle" class="t-xs t-muted mono">called / staff</text>
+
+              <path class="edge-c c-ok" d="M530 110 C600 100, 620 60, 686 50" marker-end="url(#ah)" style="stroke:var(--ok)"/>
+              <text x="596" y="66" text-anchor="middle" class="t-sm t-b">完了</text>
+              <text x="596" y="84" text-anchor="middle" class="t-xs t-muted mono">done / staff</text>
+
+              <path class="edge-c c-electric" d="M530 132 C600 140, 620 168, 686 168" marker-end="url(#ah-electric)"/>
+              <text x="604" y="182" text-anchor="middle" class="t-sm t-b">スキップ</text>
+              <text x="604" y="198" text-anchor="middle" class="t-xs t-muted mono">skipped / staff</text>
+
+              <path class="edge dash" d="M175 148 C175 210, 300 248, 376 248" marker-end="url(#ah)"/>
+              <path class="edge dash" d="M455 148 V216" marker-end="url(#ah)"/>
+              <text x="196" y="266" class="t-sm t-b">キャンセル</text>
+              <text x="196" y="283" class="t-xs t-muted mono">cancelled / user</text>
+              <text x="464" y="186" class="t-xs t-muted">キャンセル</text>
+
+              <text x="690" y="250" class="t-xs t-muted">◎ 二重枠 = 終了状態</text>
+              <text x="690" y="268" class="t-xs t-muted">（ここからは遷移しない）</text>
+            </svg>
+          </div>
+          <div class="legend">
+            <span class="c-muted"><i class="line"></i>スタッフ操作</span>
+            <span class="c-muted"><i class="dash"></i>お客様操作（スマホ）</span>
+          </div>
+          <figcaption>図 4-1. 状態遷移図 ― 終了状態は done / skipped / cancelled の 3 つ</figcaption>
+        </figure>
+
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>現在の状態</th><th>可能な操作</th><th>次の状態</th><th>操作する端末</th></tr></thead>
+            <tbody>
+              <tr><td><span class="tag c-warn">waiting</span></td><td>呼び出す</td><td><span class="tag c-client">called</span></td><td>呼び出し端末（先頭の 1 件のみ）</td></tr>
+              <tr><td><span class="tag c-warn">waiting</span></td><td>キャンセル</td><td><span class="tag c-danger">cancelled</span></td><td>お客様スマホ</td></tr>
+              <tr><td><span class="tag c-client">called</span></td><td>完了</td><td><span class="tag c-ok">done</span></td><td>呼び出し端末</td></tr>
+              <tr><td><span class="tag c-client">called</span></td><td>スキップ</td><td><span class="tag c-electric">skipped</span></td><td>呼び出し端末（確認ダイアログあり）</td></tr>
+              <tr><td><span class="tag c-client">called</span></td><td>キャンセル</td><td><span class="tag c-danger">cancelled</span></td><td>お客様スマホ</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="sm-enforce">遷移ルールの検証（3 段構え）</h3>
+        <p>
+          遷移ルールはドメイン層の <code>checkEventAppend()</code>（内部で <code>isValidStateTransition()</code> を使う）に 1 か所だけ定義し、
+          クライアントとサーバーの両方で同じ関数を使って検証します。
+        </p>
+        <div class="flow">
+          <div class="c-client"><b>① UI</b>その状態で可能な操作のボタンだけを表示する</div>
+          <div class="c-server"><b>② ユースケース</b><code>addEntryEvent()</code> がローカルのイベント履歴で判定し、不正なら書き込む前にエラー</div>
+          <div class="c-pg"><b>③ サーバー</b><code>entry.insertEvent</code> が受付の行を <code>FOR UPDATE</code> でロックし、DB の履歴で再判定。不正なら <code>CONFLICT</code></div>
+        </div>
+        <p>
+          ③ により、別端末とのすれ違い（例：スマホでキャンセルした直後に、同期が届く前の呼び出し端末で「完了」を押す）でも不正なイベントは記録されません。
+          このとき楽観的な変更はロールバックされ、画面には「現在の状態（キャンセル済み）からはこの操作を実行できません」と表示されます。
+        </p>
+
+        <!-- ===================================================== -->
+        <h2 id="read-model"><span class="num">05</span>読み取りモデル（マテリアライズドビュー）設計</h2>
+        <p>
+          画面が使うデータは、2 つのコレクションから<strong>派生させたビュー</strong>として React のフックで提供されます（<code>app/query/entry/hooks.ts</code>）。
+          ビューは保存されず、元データが同期で更新されると自動的に再計算されます。JOIN と状態の計算はアプリ全体で 1 回だけ行い（<code>app/query/entry/entry-states-store.ts</code>）、全フックで結果を共有します。
+          考え方・更新の流れ・改善案は<a href="tech-materialized-view.html">マテリアライズドビュー解説</a>で詳しく説明しています。
+        </p>
+
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 1000 330" role="img" aria-labelledby="rm-t">
+              <title id="rm-t">コレクションからフックへの派生関係</title>
+              <g class="c-db">
+                <rect class="node" x="16" y="80" width="160" height="46" rx="10"/>
+                <text x="96" y="100" text-anchor="middle" class="t-sm t-b mono">entriesCollection</text>
+                <text x="96" y="117" text-anchor="middle" class="t-xs t-muted">entry テーブル</text>
+                <rect class="node" x="16" y="160" width="160" height="46" rx="10"/>
+                <text x="96" y="180" text-anchor="middle" class="t-sm t-b mono">entryEventsCollection</text>
+                <text x="96" y="197" text-anchor="middle" class="t-xs t-muted">entry_event テーブル</text>
+              </g>
+
+              <g class="c-domain">
+                <rect class="node" x="226" y="118" width="176" height="52" rx="10"/>
+                <text x="314" y="140" text-anchor="middle" class="t-sm t-b mono">useEntryStates</text>
+                <text x="314" y="158" text-anchor="middle" class="t-xs t-muted">共有の leftJoin ＋ 状態計算</text>
+              </g>
+              <g class="c-client">
+                <rect class="node" x="226" y="252" width="176" height="52" rx="10"/>
+                <text x="314" y="274" text-anchor="middle" class="t-sm t-b mono">useEntryByToken</text>
+                <text x="314" y="292" text-anchor="middle" class="t-xs t-muted">token で 1 件を探す</text>
+              </g>
+              <path class="edge" d="M176 103 C200 103, 200 136, 222 136" marker-end="url(#ah)"/>
+              <path class="edge" d="M176 183 C200 183, 200 152, 222 152" marker-end="url(#ah)"/>
+              <path class="edge" d="M314 170 V248" marker-end="url(#ah)"/>
+
+              <g class="c-client">
+                <rect class="node" x="446" y="30" width="176" height="46" rx="10"/>
+                <text x="534" y="58" text-anchor="middle" class="t-sm t-b mono">useQueueStats</text>
+                <rect class="node" x="446" y="140" width="176" height="46" rx="10"/>
+                <text x="534" y="168" text-anchor="middle" class="t-sm t-b mono">useEntriesByState</text>
+                <rect class="node" x="666" y="100" width="176" height="46" rx="10"/>
+                <text x="754" y="128" text-anchor="middle" class="t-sm t-b mono">useWaitingEntries</text>
+                <rect class="node" x="666" y="190" width="176" height="46" rx="10"/>
+                <text x="754" y="218" text-anchor="middle" class="t-sm t-b mono">useCalledEntries</text>
+                <rect class="node" x="870" y="100" width="118" height="46" rx="10"/>
+                <text x="929" y="121" text-anchor="middle" class="t-xs t-b mono">useNext</text>
+                <text x="929" y="136" text-anchor="middle" class="t-xs t-b mono">WaitingEntry</text>
+              </g>
+              <path class="edge" d="M402 136 C424 136, 424 53, 442 53" marker-end="url(#ah)"/>
+              <path class="edge" d="M402 150 C424 150, 424 163, 442 163" marker-end="url(#ah)"/>
+              <path class="edge" d="M622 158 C644 158, 644 123, 662 123" marker-end="url(#ah)"/>
+              <path class="edge" d="M622 170 C644 170, 644 213, 662 213" marker-end="url(#ah)"/>
+              <path class="edge" d="M842 123 H866" marker-end="url(#ah)"/>
+
+              <text x="534" y="92" text-anchor="middle" class="t-xs t-muted">件数・平均待ち時間 → 受付 / 表示</text>
+              <text x="534" y="202" text-anchor="middle" class="t-xs t-muted">状態でフィルタ</text>
+              <text x="754" y="90" text-anchor="middle" class="t-xs t-muted">番号の小さい順 → 受付 / 呼出 / スマホ</text>
+              <text x="754" y="252" text-anchor="middle" class="t-xs t-muted">呼出時刻の新しい順 → 呼出 / 表示</text>
+              <text x="929" y="162" text-anchor="middle" class="t-xs t-muted">先頭 1 件 → 呼出</text>
+              <text x="314" y="322" text-anchor="middle" class="t-xs t-muted">→ スマホ</text>
+
+              <text x="16" y="40" class="t-xs t-b" style="fill:var(--c-db)">TanStack DB</text>
+              <text x="16" y="56" class="t-xs t-muted">（Electric で同期）</text>
+            </svg>
+          </div>
+          <div class="legend">
+            <span class="c-db"><i></i>コレクション（同期されたデータ）</span>
+            <span class="c-domain"><i></i>共有ライブクエリ（JOIN・状態計算を 1 回だけ）</span>
+            <span class="c-client"><i></i>派生ビュー（useMemo）</span>
+          </div>
+          <figcaption>図 5-1. 読み取りモデルの派生関係 ― 末端のフックほど特定の画面向けに絞り込まれている</figcaption>
+        </figure>
+
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>フック</th><th>返す値</th><th>作り方</th><th>使う画面</th></tr></thead>
+            <tbody>
+              <tr><td><code>useEntryStates</code></td><td>全受付＋現在の状態</td><td>共有のライブクエリ（<code>createLiveQueryCollection</code>）で entry と entry_event を leftJoin → Zod で検証 → 受付ごとにまとめて状態を計算。結果は <code>useSyncExternalStore</code> で全フックが共有</td><td>（他のフックの元）</td></tr>
+              <tr><td><code>useEntriesByState</code></td><td>指定状態の受付</td><td><code>useEntryStates</code> を filter</td><td>（他のフックの元）</td></tr>
+              <tr><td><code>useWaitingEntries</code></td><td>待機中（番号順）</td><td>waiting を番号の昇順でソート</td><td>受付・呼び出し・スマホ</td></tr>
+              <tr><td><code>useNextWaitingEntry</code></td><td>次に呼ぶ受付</td><td>待機中の先頭 1 件</td><td>呼び出し</td></tr>
+              <tr><td><code>useCalledEntries</code></td><td>呼び出し中（新しい順）</td><td>called を最終イベント時刻の降順でソート</td><td>呼び出し・表示</td></tr>
+              <tr><td><code>useQueueStats</code></td><td>状態ごとの件数・平均待ち時間</td><td><code>useEntryStates</code> を集計</td><td>受付・表示</td></tr>
+              <tr><td><code>useEntryByToken</code></td><td>トークンに一致する 1 件</td><td><code>useEntryStates</code> からトークンが一致する 1 件を探す</td><td>スマホ</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout callout--note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/></svg>
+          <div>
+            <div class="callout__title">JOIN 結果を「受付ごと」に組み直す理由</div>
+            <p>
+              leftJoin の結果は「受付 × イベント」の行になるため、1 件の受付が複数行に分かれます。
+              <code>buildEntryStatesFromJoinedData()</code>（<code>app/query/entry/helpers.ts</code>）が受付 ID ごとにイベントをまとめ直し、
+              <code>calculateCurrentState()</code> で状態を決めています。
+            </p>
+          </div>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="write-path"><span class="num">06</span>書き込み設計</h2>
+        <p>
+          画面からの書き込みは、すべて <strong>TanStack DB のコレクションへの insert</strong> として表現されます。
+          コレクションは画面に即座に反映（楽観的更新）しつつ、裏で tRPC 経由で PostgreSQL に書き込み、
+          その変更が Electric で戻ってくるまで待ってから確定します。
+        </p>
+        <div class="flow">
+          <div class="c-client"><b>画面</b>ボタン操作でユースケースを呼ぶ</div>
+          <div class="c-domain"><b>ユースケース</b>ID・トークンを作り、リポジトリに渡す</div>
+          <div class="c-db"><b>コレクション</b><code>insert()</code> で画面に即反映</div>
+          <div class="c-server"><b>onInsert → tRPC</b>サーバーで INSERT し <code>txid</code> を返す</div>
+          <div class="c-electric"><b>確定待ち</b><code>awaitTxId(txid)</code> で同期の到着を待つ</div>
+        </div>
+
+        <div class="code">
+          <div class="code__title">app/infrastructure/database/collections.ts（抜粋）</div>
+<pre><span class="k">export const</span> entriesCollection = <span class="f">createCollection</span>(
+  <span class="f">electricCollectionOptions</span>({
+    id: <span class="s">'entries'</span>,
+    schema: DbEntrySchema,
+    getKey: (entry) =&gt; entry.id,
+    shapeOptions: { ...electricConfig, params: { table: <span class="s">'entry'</span> } }, <span class="n">1</span>
+    onInsert: <span class="k">async</span> ({ transaction, collection }) =&gt; {
+      <span class="k">const</span> { modified: newEntry } = transaction.mutations[<span class="t">0</span>];
+      <span class="k">const</span> result = <span class="k">await</span> trpc.entry.insert.<span class="f">mutate</span>({ ... }); <span class="n">2</span>
+      <span class="k">await</span> collection.utils.<span class="f">awaitTxId</span>(result.txid); <span class="n">3</span>
+    },
+  }),
+);</pre>
+        </div>
+        <ol class="steps-legend">
+          <li><span class="n">1</span><span>読み取りは Electric の Shape（<code>entry</code> テーブル全体）から同期する。</span></li>
+          <li><span class="n">2</span><span>書き込みはサーバーの tRPC プロシージャに任せる。サーバーは同じトランザクション内で <code>pg_current_xact_id()</code> を返す。</span></li>
+          <li><span class="n">3</span><span>そのトランザクション ID を含む変更が Electric から届くまで待つ。届いた時点で楽観的な値が同期済みの値に置き換わり、画面がちらつかない。</span></li>
+        </ol>
+
+        <h3 id="write-create">整理券発行は 2 回の書き込み</h3>
+        <p>
+          <code>createEntry()</code>（<code>app/usecases/entry/create-entry.ts</code>）は、<code>entry</code> の insert と <code>created</code> イベントの insert を<strong>順番に</strong>行います。
+          それぞれ <code>tx.when('settled')</code> で完了を待ってから次へ進みます。
+        </p>
+        <div class="callout callout--warn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20zM12 10v4M12 17h.01"/></svg>
+          <div>
+            <div class="callout__title">2 つの書き込みは 1 つのトランザクションではない</div>
+            <p>
+              entry の書き込みが成功し、イベントの書き込みが失敗した場合、<code>created</code> イベントのない受付が残ります。
+              ただし状態の導出ルールで「イベントなし ＝ waiting」としているため、画面上は待機中として扱われ、運用は継続できます。
+            </p>
+          </div>
+        </div>
+
+        <h3 id="write-why">なぜ Electric に直接書かないのか</h3>
+        <p>
+          Electric は <strong>読み取り専用の同期エンジン</strong>で、クライアントから PostgreSQL へ書き込む機能を持ちません。
+          そのため書き込みは自前の API が担当します。このアプリでは当初 TanStack Start のサーバー関数を使っていましたが、
+          現在は独立した <strong>Hono + tRPC サーバー</strong>に移行しています（詳しくは<a href="tech-trpc.html">tRPC の技術解説</a>）。
+        </p>
+
+        <!-- ===================================================== -->
+        <h2 id="numbering"><span class="num">07</span>採番設計</h2>
+        <p>
+          整理券番号は <strong>サーバーが INSERT と同じトランザクションの中で</strong>決めます。
+          画面に即時表示するための<strong>仮の番号</strong>は事前に <code>queue.getNextTicketNumber</code>（<code>MAX(number) + 1</code>）で取得しますが、確定番号は <code>entry.insert</code> の中で次のように採番します。
+        </p>
+        <div class="code">
+          <div class="code__title">server/routers/entry.ts（entry.insert の中身）</div>
+<pre><span class="k">BEGIN</span>;
+<span class="k">SELECT</span> id <span class="k">FROM</span> queue <span class="k">WHERE</span> id = $queue_id <span class="hl">FOR UPDATE</span>;      <span class="c">-- 待ち行列の行をロック（同時発行を直列化）</span>
+<span class="k">INSERT INTO</span> entry (id, queue_id, number, party_size, public_token, created_at)
+  <span class="k">SELECT</span> $id, $queue_id, <span class="hl">COALESCE(MAX(number), 0) + 1</span>, $party_size, $token, now()
+  <span class="k">FROM</span> entry <span class="k">WHERE</span> queue_id = $queue_id
+  <span class="k">RETURNING</span> number, pg_current_xact_id()::text <span class="k">AS</span> txid;
+<span class="k">COMMIT</span>;</pre>
+        </div>
+        <figure class="figure">
+          <div class="figure__scroll">
+            <svg viewBox="0 0 880 210" role="img" aria-labelledby="nb-t">
+              <title id="nb-t">2台の受付端末が同時に発行した場合の流れ</title>
+              <g class="c-client">
+                <rect class="node" x="16" y="20" width="120" height="40" rx="8"/><text x="76" y="45" text-anchor="middle" class="t-sm t-b">受付端末 A</text>
+                <rect class="node" x="16" y="130" width="120" height="40" rx="8"/><text x="76" y="155" text-anchor="middle" class="t-sm t-b">受付端末 B</text>
+              </g>
+              <g class="c-pg"><rect class="node" x="740" y="74" width="124" height="44" rx="8"/><text x="802" y="101" text-anchor="middle" class="t-sm t-b">PostgreSQL</text></g>
+
+              <path class="edge" d="M136 40 H680 C716 40, 728 58, 738 80" marker-end="url(#ah)"/>
+              <path class="edge" d="M136 150 H680 C716 150, 728 132, 738 112" marker-end="url(#ah)"/>
+              <g class="t-xs">
+                <rect class="pill-bg" x="160" y="28" width="130" height="24" rx="12"/><text x="225" y="44" text-anchor="middle">仮の番号 13</text>
+                <rect class="pill-bg" x="160" y="138" width="130" height="24" rx="12"/><text x="225" y="154" text-anchor="middle">仮の番号 13</text>
+                <rect class="pill-bg" x="330" y="28" width="150" height="24" rx="12"/><text x="405" y="44" text-anchor="middle">ロック取得 → 採番</text>
+                <rect class="pill-bg" x="330" y="138" width="150" height="24" rx="12"/><text x="405" y="154" text-anchor="middle">A の完了までロック待ち</text>
+                <rect x="510" y="28" width="150" height="24" rx="12" fill="color-mix(in srgb, var(--ok) 14%, var(--surface))" stroke="var(--ok)"/><text x="585" y="44" text-anchor="middle" class="t-b" style="fill:var(--ok)">確定 13 ✓</text>
+                <rect x="510" y="138" width="150" height="24" rx="12" fill="color-mix(in srgb, var(--ok) 14%, var(--surface))" stroke="var(--ok)"/><text x="585" y="154" text-anchor="middle" class="t-b" style="fill:var(--ok)">確定 14 ✓</text>
+              </g>
+              <text x="440" y="192" text-anchor="middle" class="t-xs t-muted">FOR UPDATE で発行を 1 件ずつ処理するため、どちらの発行も成功し番号も重複しない</text>
+            </svg>
+          </div>
+          <figcaption>図 7-1. 同時発行時の採番 ― 仮の番号が同じでも、確定番号はサーバーがロックの順に振る</figcaption>
+        </figure>
+        <ul>
+          <li><strong>重複の防止</strong>：待ち行列の行のロックで採番を直列化します。<code>UNIQUE(queue_id, number)</code> 制約は最後の安全装置として残しています。</li>
+          <li><strong>仮の番号と確定番号</strong>：楽観的更新では仮の番号を表示し、Electric から同期された行（確定番号）に置き換わります。発行完了モーダルには、リポジトリが同期後のコレクションから読み取った<strong>確定番号</strong>を表示します。</li>
+          <li><strong>オフライン時</strong>：採番にサーバーが必要なため、オフラインでは整理券を発行できません。</li>
+        </ul>
+
+        <!-- ===================================================== -->
+        <h2 id="token"><span class="num">08</span>公開トークン設計</h2>
+        <p>
+          お客様のスマホは、整理券の QR コードに含まれる <code>public_token</code> で自分の受付を特定します。URL は
+          <code>https://&lt;LAN の IP&gt;/entry/&lt;token&gt;</code> です。
+        </p>
+        <div class="cards">
+          <div class="card">
+            <h4>形式</h4>
+            <p>英大文字と数字の <strong>8 文字</strong>（Zod: <code>length(8)</code>・<code>/^[A-Z0-9]+$/</code>）。</p>
+          </div>
+          <div class="card">
+            <h4>使う文字</h4>
+            <p><code>ABCDEFGHJKLMNPQRSTUVWXYZ23456789</code> の 32 文字。読み間違えやすい <code>I O 0 1</code> を除外しています。</p>
+          </div>
+          <div class="card">
+            <h4>組み合わせ数</h4>
+            <p>32<sup>8</sup> ≒ <strong>1.1 兆通り</strong>。推測は困難ですが、生成には <code>Math.random()</code> を使っており暗号論的な乱数ではありません。</p>
+          </div>
+        </div>
+
+        <!-- ===================================================== -->
+        <h2 id="layers"><span class="num">09</span>レイヤー設計</h2>
+        <p>
+          フロントエンド（<code>app/</code>）はクリーンアーキテクチャを参考にした層構造です。ユースケースは<strong>リポジトリのインターフェース</strong>だけを知っており、
+          実装（TanStack DB コレクション）は画面がファクトリー関数から取得して渡します。
+        </p>
+        <div class="code">
+          <div class="code__title">依存性の注入（ReceptionComponent.tsx より）</div>
+<pre><span class="k">const</span> result = <span class="k">await</span> <span class="f">createEntry</span>(
+  <span class="f">getEntryRepository</span>(),      <span class="c">// infrastructure: TanStack DB 実装</span>
+  <span class="f">getEntryEventRepository</span>(), <span class="c">// infrastructure: TanStack DB 実装</span>
+  QUEUE_ID,
+  nextNumberResult.number,
+  partySize,
+);</pre>
+        </div>
+        <p>層ごとの責務と依存の向きは<a href="structure.html">構成・構造の解説</a>で図にしています。</p>
+
+        <!-- ===================================================== -->
+        <h2 id="client-runtime"><span class="num">10</span>実行環境の設計（SSR とブラウザ）</h2>
+        <ul>
+          <li><strong>画面はブラウザでだけ描画する</strong>：各ルートは <code>&lt;ClientOnly&gt;</code> で画面を包み、サーバー側では「読み込み中...」だけを返します。TanStack DB と Electric の同期はブラウザでしか動かないためです。</li>
+          <li><strong>環境変数はブラウザで検証する</strong>：<code>env.client.ts</code> が <code>import.meta.env</code> を Zod で検証し、<code>VITE_ELECTRIC_URL</code> は <code>https</code> のみ許可しています。</li>
+          <li><strong>HTTPS が必須</strong>：ID の生成に使う <code>crypto.randomUUID()</code> は安全なコンテキスト（HTTPS または localhost）でしか使えません。LAN 内のスマホからも HTTPS でアクセスできるよう、Caddy で TLS を終端します。</li>
+        </ul>
+
+        <!-- ===================================================== -->
+        <h2 id="network"><span class="num">11</span>ネットワーク設計</h2>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>パス / ポート</th><th>行き先</th><th>経由</th><th>用途</th></tr></thead>
+            <tbody>
+              <tr><td><code>https://…/v1/*</code></td><td>Electric <code>:3000</code></td><td>Caddy</td><td>Shape API（読み取り同期）</td></tr>
+              <tr><td><code>https://…/trpc/*</code></td><td>Hono + tRPC <code>:3001</code></td><td>Caddy → Vite のプロキシ</td><td>書き込み・採番</td></tr>
+              <tr><td><code>https://…/*</code>（その他）</td><td>Vite <code>:5173</code></td><td>Caddy</td><td>画面・JS・CSS・HMR</td></tr>
+              <tr><td><code>:5432</code></td><td>PostgreSQL</td><td>直接</td><td>tRPC サーバーと Electric が接続</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>tRPC サーバーの既定ポートは、Electric（<code>3000</code>）と衝突しないよう <code>3001</code> にしています（環境変数 <code>TRPC_PORT</code> で変更可能）。</p>
+
+        <!-- ===================================================== -->
+        <h2 id="issues"><span class="num">12</span>設計上の課題と今後</h2>
+        <p>要件定義（<code>design-docs/要件定義・仕様書.md</code>）と現在の実装を比べた際の差分・課題です。</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>項目</th><th>現状</th><th>対応の方向性</th></tr></thead>
+            <tbody>
+              <tr><td>オフラインでの書き込み</td><td>書き込みは tRPC が必須のため、オフラインでは楽観的更新がロールバックされる。採番もサーバー依存</td><td>TanStack DB のオフライン書き込み（永続化キュー）の導入、番号の端末内採番</td></tr>
+              <tr><td>データの永続化</td><td>同期データはメモリ上にあり、再読み込みで再同期する</td><td>コレクションの永続化（IndexedDB など）</td></tr>
+              <tr><td>部分同期</td><td>全端末が entry / entry_event の全件を同期する（スマホも他の客の情報を受信）</td><td>Shape の <code>where</code> による絞り込み、集計用ビュー</td></tr>
+              <tr><td>認証・権限</td><td>なし（どの端末もすべての画面を開ける）</td><td>スタッフ画面の PIN・認証</td></tr>
+              <tr><td>複数の待ち行列</td><td>キュー ID を画面にハードコード（デフォルト店舗のみ）</td><td>キュー選択・管理画面</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <nav class="pager" aria-label="前後の資料">
+          <a href="index.html"><small>← 前へ</small>ホーム</a>
+          <a class="next" href="spec.html"><small>次へ →</small>アプリの仕様書</a>
+        </nav>
+      </article>
+    </main>
+  </div>
+  <footer class="site-footer">店舗向け順番待ちアプリ 解説資料 ― 設計書</footer>
+</body>
+</html>
