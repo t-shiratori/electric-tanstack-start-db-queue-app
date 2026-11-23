@@ -1,10 +1,6 @@
-import { eq, useLiveQuery } from '@tanstack/react-db';
-import { useMemo } from 'react';
-import { z } from 'zod';
+import { useMemo, useSyncExternalStore } from 'react';
 import type { EntryState, EntryWithState } from '~/domain/entry';
-import { entriesCollection, entryEventsCollection } from '~/infrastructure/database/collections';
-import { JoinedEntryEventRowSchema } from '~/infrastructure/database/schemas';
-import { buildEntryStatesFromJoinedData } from './helpers';
+import { getEntryStatesSnapshot, getServerEntryStatesSnapshot, subscribeEntryStates } from './entry-states-store';
 import type { QueueStats } from './types';
 
 /**
@@ -15,30 +11,10 @@ import type { QueueStats } from './types';
  * - 状態をイベントから計算
  * - リアクティブに更新
  * - 保存されない（常に導出）
+ * - JOIN・検証・状態の計算はアプリ全体で1回だけ行い、全フックで結果を共有する
  */
 export function useEntryStates(): EntryWithState[] {
-  const { data: entriesWithEvents = [] } = useLiveQuery((query) =>
-    query
-      .from({ entry: entriesCollection })
-      .leftJoin({ event: entryEventsCollection }, ({ entry, event }) => eq(entry.id, event.entry_id))
-      .select(({ entry, event }) => ({
-        id: entry.id,
-        ticketNumber: entry.number,
-        createdAt: entry.created_at,
-        token: entry.public_token,
-        eventId: event?.id,
-        eventType: event?.type,
-        eventCreatedAt: event?.created_at,
-        eventActor: event?.actor,
-      }))
-      .orderBy(({ entry }) => entry.number, 'asc'),
-  );
-
-  return useMemo(() => {
-    // Zodスキーマでバリデーション
-    const validatedData = z.array(JoinedEntryEventRowSchema).parse(entriesWithEvents);
-    return buildEntryStatesFromJoinedData(validatedData);
-  }, [entriesWithEvents]);
+  return useSyncExternalStore(subscribeEntryStates, getEntryStatesSnapshot, getServerEntryStatesSnapshot);
 }
 
 /**
@@ -111,34 +87,12 @@ export function useQueueStats(): QueueStats {
 /**
  * マテリアライズドビュー: トークンでエントリーを取得（スマホ画面用）
  *
- * クエリレベルでフィルタリング（効率的）
- * - 必要なデータだけ取得
- * - whereでフィルタ
+ * useEntryStatesから派生したView
+ * - 共有の状態一覧から探すため、専用のライブクエリは作らない
  */
 export function useEntryByToken(token: string): EntryWithState | undefined {
-  const { data: entriesWithEvents = [] } = useLiveQuery((query) =>
-    query
-      .from({ entry: entriesCollection })
-      .leftJoin({ event: entryEventsCollection }, ({ entry, event }) => eq(entry.id, event.entry_id))
-      .where(({ entry }) => eq(entry.public_token, token))
-      .select(({ entry, event }) => ({
-        id: entry.id,
-        ticketNumber: entry.number,
-        createdAt: entry.created_at,
-        token: entry.public_token,
-        eventId: event?.id,
-        eventType: event?.type,
-        eventCreatedAt: event?.created_at,
-        eventActor: event?.actor,
-      })),
-  );
-
-  return useMemo(() => {
-    // Zodスキーマでバリデーション
-    const validatedData = z.array(JoinedEntryEventRowSchema).parse(entriesWithEvents);
-    const states = buildEntryStatesFromJoinedData(validatedData);
-    return states[0];
-  }, [entriesWithEvents]);
+  const entryStates = useEntryStates();
+  return useMemo(() => entryStates.find((entry) => entry.token === token), [entryStates, token]);
 }
 
 /**
